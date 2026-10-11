@@ -24,6 +24,7 @@ jobs:
           luac5.1 -p annotation_panel.lua
           luac5.1 -p zoteroapi.lua
           luac5.1 -p zotero_dropbox.lua
+          luac5.1 -p zotero_file_validation.lua
           luac5.1 -p main.lua
           luac5.1 -p zotero_storage_manager.lua
       - name: Check OAuth helper and installation shell script syntax
@@ -34,3 +35,4 @@ jobs:
           bash -n tools/mover_storage_para_documents_kindle.sh
           bash -n tools/instalar_gerenciador_espaco_kindle.sh
           bash -n tools/corrigir_storage_duplo_kindle.sh
+          bash -n tools/corrigir_download_pdf_kindle.sh
