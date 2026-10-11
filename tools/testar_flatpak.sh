@@ -8,7 +8,7 @@ DATA_DIR="$HOME/.var/app/$APP_ID/config/koreader"
 PLUGIN_DIR="$DATA_DIR/plugins/zoteroatelier.koplugin"
 BACKUP_ROOT="$HOME/Downloads/BACKUP-ZOTERO-ATELIER-DROPBOX"
 BASE="https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/feature/dropbox-on-demand"
-FILES=(annotation_panel.lua zoteroapi.lua zotero_dropbox.lua)
+FILES=(annotation_panel.lua zoteroapi.lua zotero_dropbox.lua main.lua)
 MODE="${1:-install}"
 
 fail() { printf '\nERRO: %s\n' "$*" >&2; exit 1; }
@@ -47,7 +47,7 @@ case "$MODE" in
         chmod 700 "$BACKUP_ROOT"
         WORK="$(mktemp -d)"
         trap 'rm -rf "$WORK"' EXIT
-        say "Baixando somente os 3 arquivos da branch experimental"
+        say "Baixando os 4 arquivos da branch experimental (incluindo o menu Dropbox)"
         for name in "${FILES[@]}"; do
             curl -fLsS --retry 2 --connect-timeout 15 --max-time 90 \
                 -o "$WORK/$name" "$BASE/$name" || fail "Falha ao baixar $name; plugin preservado."
@@ -81,7 +81,7 @@ case "$MODE" in
         echo "Backup completo em: $DEST"
         echo "As credenciais Zotero e Dropbox NÃO foram modificadas."
         echo "Inicie o KOReader e confira se o Zotero Atelier abre e navega."
-        echo "Dropbox fica DESATIVADO até configurar o OAuth."
+        echo "Dropbox fica DESATIVADO até configurar via Zotero Atelier > Settings > Configure Dropbox account."
         echo "Voltar atrás: bash <este_script> restore"
         ;;
     restore)
