@@ -16,6 +16,10 @@ local _ = require("gettext")
 
 local M = {}
 
+-- First on-device diagnostic release: report sizes without permitting removal.
+-- Re-enable deletion only after a device test and audit of annotation safety.
+local SAFE_READ_ONLY = true
+
 local function sizeText(bytes)
     local mib = (tonumber(bytes) or 0) / (1024 * 1024)
     if mib < 0.1 and bytes > 0 then
@@ -126,8 +130,10 @@ local function collect()
 end
 
 local function freeSpace()
-    local ok, total, _, available = pcall(util.df, ZoteroAPI.zotero_dir)
-    if not ok or not total or not available then
+    -- Do not shadow the gettext translator named "_" with a numeric return
+    -- value from ffi/util.df(). Doing so crashed KOReader on Kindle.
+    local ok, total, free_bytes, available = pcall(util.df, ZoteroAPI.zotero_dir)
+    if not ok or type(total) ~= "number" or type(available) ~= "number" then
         return _("Free disk space not available")
     end
     return _("Device storage") .. ": " .. sizeText(total) .. "\n"
@@ -221,6 +227,9 @@ function M.show(plugin, selected)
     end
     table.insert(lines, "")
     table.insert(lines, _("Selected, estimated recovery") .. ": " .. count .. " / " .. sizeText(bytes))
+    if SAFE_READ_ONLY then
+        table.insert(lines, _("READ-ONLY TEST: deletion is temporarily disabled."))
+    end
     table.insert(lines, _("No metadata, credentials, reading progress or shared KOReader cache will be erased."))
     table.insert(buttons, {
         {
@@ -228,8 +237,15 @@ function M.show(plugin, selected)
             callback = function() UIManager:close(dialog) end,
         },
         {
-            text = _("Delete selected downloads"),
+            text = SAFE_READ_ONLY and _("Delete disabled (read-only test)") or _("Delete selected downloads"),
             callback = function()
+                if SAFE_READ_ONLY then
+                    UIManager:show(InfoMessage:new({
+                        text = _("No documents can be deleted in this test version."),
+                        icon = "notice-info",
+                    }))
+                    return
+                end
                 UIManager:close(dialog)
                 if count == 0 then
                     UIManager:show(InfoMessage:new({ text = _("No downloads selected.") }))
@@ -264,7 +280,7 @@ function M.show(plugin, selected)
         },
     })
     dialog = ButtonDialog:new({
-        title = _("Zotero storage and cleanup") .. "\n\n" .. table.concat(lines, "\n"),
+        title = _("Zotero storage report (read-only)") .. "\n\n" .. table.concat(lines, "\n"),
         buttons = buttons,
     })
     UIManager:show(dialog)
