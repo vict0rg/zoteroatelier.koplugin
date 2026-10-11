@@ -87,6 +87,25 @@ The cleanup manager only invokes `os.remove` inside a separate **Delete selected
 
 **Do not re-enable/claim the space panel is fixed until the crash trace has been evaluated and a device test passes.**
 
+## Crash traceback root cause fixed in read-only report, Kindle retest pending
+
+The Kindle `koreader/crash.log` contained:
+
+```text
+./luajit: plugins/zoteroatelier.koplugin/zotero_storage_manager.lua:131:
+attempt to call local '_' (a number value)
+stack traceback:
+  zotero_storage_manager.lua:131: in function 'freeSpace'
+  zotero_storage_manager.lua:203: in function 'show'
+  main.lua:574: in function 'callback'
+```
+
+Root cause is unambiguous: `local ok, total, _, available = pcall(util.df, ...)` created a **numeric local variable named `_`**, shadowing the gettext function `local _ = require("gettext")`. Entering a translation call `_("Free disk space not available")` on line 131 raised the error; it did **not** involve deletion.
+
+New branch code renames the numeric result to `free_bytes`, verifies that `total` and `available` are numeric, and wraps the menu call to `StorageManager.show(self)` in `xpcall` so future Lua exceptions show an informational error instead of terminating KOReader. The report has a hard-coded `SAFE_READ_ONLY = true`; deletion cannot execute from the UI. A backup-enabled, **two-file-only** installer `tools/testar_relatorio_espaco_kindle.sh` updates `main.lua` and `zotero_storage_manager.lua`. Emergency rollback `tools/desativar_limpeza_kindle.sh` now fetches the known disabled-menu commit rather than an unsafe mutable branch HEAD.
+
+**Status: Code fixed and committed; physical Kindle test not yet performed.** Existing working local Zotero, Dropbox, annotation and PDF routines were left alone.
+
 ## Not yet established
 
 - Broader Kindle compatibility, performance, large-library behavior, and repeatability beyond the successful Oasis smoke test
