@@ -9,6 +9,7 @@ local SQ3 = require("lua-ljsqlite3/init")
 local logger = require("logger")
 local Annotations = require("annotations")
 local DropboxBridge = require("zotero_dropbox")
+local Device = require("device")
 local _ = require("gettext")
 -- For my annotation routines:
 local DocSettings = require("docsettings")
@@ -583,11 +584,13 @@ function API.init(zotero_dir)
     -- data directory, but put downloaded books under Kindle /documents.
     -- This makes PDF/EPUB attachments visible to KOReader's recursive cover
     -- browser, without relocating the SQLite database or Dropbox tokens.
-    -- Only the physical Kindle /mnt/us layout is affected; desktop/Flatpak
-    -- continues to use the original data-dir/zotero/storage.
+    -- Only a Kindle with its standard /mnt/us/documents volume is
+    -- affected; desktop/Flatpak continues to use data-dir/zotero/storage.
+    -- Detect the *device*, not the exact spelling of DataStorage:getDataDir(),
+    -- which can vary with the KOReader installation/launcher.
     API.legacy_storage_dir = BaseUtil.joinPath(API.zotero_dir, "storage")
     API.storage_dir = API.legacy_storage_dir
-    if API.zotero_dir == "/mnt/us/koreader/zotero" then
+    if Device:isKindle() then
         local documents_dir = "/mnt/us/documents"
         if lfs.attributes(documents_dir, "mode") == "directory" then
             local zotero_documents_dir = BaseUtil.joinPath(documents_dir, "Zotero")
