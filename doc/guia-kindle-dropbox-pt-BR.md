@@ -103,6 +103,21 @@ O script salva backup dos dois arquivos anteriores e atualiza **somente `main.lu
 
 Esta interface nova **ainda precisa de validação prática no Kindle Oasis**. Não altere uma instalação funcional durante um processo de sincronização em andamento.
 
+### Falha corrigida na primeira sincronização do Kindle (11/10/2026)
+
+O primeiro teste no Kindle Oasis revelou o erro SQLite:
+
+```text
+ljsqlite3[error] no such column: "victorgianordoli"
+zoteroapi.lua:1539: in function 'checkZoteroKey'
+```
+
+**Causa:** a versão original do Atelier montava o SQL de inicialização com `name="%s"`, usando aspas duplas para o nome de usuário. O SQLite interpretou o conteúdo como identificador de coluna, não como valor textual. O problema pode não aparecer em instalações com banco já inicializado.
+
+**Correção experimental publicada:** a instrução usa `db:prepare(...)` e parâmetros ligados por `:bind(...)`, tanto para o nome quanto para os demais campos. **Não foi necessário apagar `zotero.db`, alterar a conta Zotero nem configurar novamente o Dropbox.** O instalador `tools/atualizar_progresso_kindle.sh` atualiza `zoteroapi.lua` e `main.lua` preservando o banco local.
+
+**Situação:** a causa foi confirmada pelo log e a correção está no fork; a nova tentativa de sincronização no Kindle ainda precisa ser validada.
+
 ## 8. Dúvidas frequentes
 
 **Os PDFs e EPUBs somem quando desligo o Wi-Fi?**  
