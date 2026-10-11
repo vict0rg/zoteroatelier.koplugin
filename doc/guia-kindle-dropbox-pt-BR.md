@@ -178,6 +178,23 @@ curl -fL https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/featur
 
 Ele atualiza só o código da interface (`main.lua` e `zotero_storage_manager.lua`) e **não executa nenhuma exclusão**. Após instalá-lo, a exclusão ocorre exclusivamente quando selecionada e confirmada dentro do KOReader. Depois de remover um anexo, ele poderá ser recuperado pela integração Dropbox, quando houver conexão com a internet.
 
+### Reparar armazenamento dividido entre `koreader/zotero/storage` e `documents/Zotero/storage`
+
+O primeiro script de migração funcionou, mas um teste posterior identificou **3 documentos (14 MB)** em `documents/Zotero/storage` e **1 documento (616 KB)** ainda em `koreader/zotero/storage`. O arquivo antigo aparecia em `/mnt/us/koreader/zotero/storage/A7YLM757`. A versão instalada do plugin ainda utilizava uma condição exata sobre `API.zotero_dir == "/mnt/us/koreader/zotero"`; no fork essa condição foi substituída por `Device:isKindle()`, método do próprio KOReader.
+
+**Não execute novamente o migrador inicial** quando as duas pastas já existem: ele interrompe de propósito para evitar perda de arquivos. Há um reparador específico, `tools/corrigir_storage_duplo_kindle.sh`, que atualiza **somente** `zoteroapi.lua`, faz backup de segurança, verifica conflitos de chaves de anexo e move **apenas pastas inteiras sem conflito** da raiz antiga para `documents/Zotero/storage`. Não apaga documentos, PDFs, EPUBs, anotações, dados SQLite nem credenciais.
+
+Com KOReader completamente fechado e Kindle conectado via USB, execute:
+
+```bash
+curl -fL https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/feature/dropbox-on-demand/tools/corrigir_storage_duplo_kindle.sh \
+  -o ~/Downloads/corrigir_storage_duplo_kindle.sh \
+  && bash ~/Downloads/corrigir_storage_duplo_kindle.sh
+```
+
+**Atenção:** esse reparador ainda precisa de validação no Kindle. Se apontar conflito, **pare e envie a saída**; não remova as pastas manualmente. O fato de o navegador continuar mostrando uma pasta antiga também pode ser um endereço lembrado pelo KOReader, diferente do caminho configurado como `Home` em `documents`.
+
+
 ## 8. Dúvidas frequentes
 
 **Os PDFs e EPUBs somem quando desligo o Wi-Fi?**  
