@@ -15,6 +15,7 @@ local DataStorage = require("datastorage")
 local logger = require("logger")
 local sha2 = require("ffi/sha2")
 local LuaSettings = require("luasettings")
+local FileValidation = require("zotero_file_validation")
 local ffi = require("ffi")
 ffi.cdef[[int chmod(const char *path, unsigned int mode);]]
 
@@ -107,7 +108,10 @@ function M.tryDownload(item, dest_dir, dest_path)
 
     local path, path_error = remote_path(cfg, item)
     if not path then return nil, true, path_error end
-    if lfs.attributes(dest_path, "mode") == "file" and (lfs.attributes(dest_path, "size") or 0) > 0 then
+    -- A non-empty file may still be an HTTP error body. Never reopen it
+    -- (or prevent a valid retry) merely because it has a .pdf/.epub name.
+    local valid_existing = FileValidation.isValid(dest_path, item)
+    if valid_existing then
         return dest_path, true, nil
     end
 
@@ -141,12 +145,39 @@ function M.tryDownload(item, dest_dir, dest_path)
         os.remove(part)
         return nil, true, "Dropbox download failed (HTTP " .. tostring(code) .. ")"
     end
-    if lfs.attributes(dest_path, "mode") == "file" then
+    local valid_download, reason = FileValidation.isValid(part, item)
+    if not valid_download then
         os.remove(part)
-        return dest_path, true, nil
+        return nil, true, "Dropbox returned an invalid attachment: " .. tostring(reason)
+    end
+
+    -- Publish only a verified download. Preserve an existing bad file for
+    -- diagnosis, without disturbing the corresponding KOReader .sdr.
+    local backup
+    if lfs.attributes(dest_path, "mode") == "file" then
+        if FileValidation.isValid(dest_path, item) then
+            os.remove(part)
+            return dest_path, true, nil
+        end
+        backup = dest_path .. ".invalid-backup"
+        local n = 1
+        while lfs.attributes(backup) ~= nil and n < 100 do
+            backup = dest_path .. ".invalid-backup-" .. tostring(n)
+            n = n + 1
+        end
+        if lfs.attributes(backup) ~= nil then
+            os.remove(part)
+            return nil, true, "Too many invalid attachment backups; inspect storage manually"
+        end
+        local moved, move_error = os.rename(dest_path, backup)
+        if not moved then
+            os.remove(part)
+            return nil, true, "Cannot preserve previous invalid attachment: " .. tostring(move_error)
+        end
     end
     local renamed, rename_error = os.rename(part, dest_path)
     if not renamed then
+        if backup then os.rename(backup, dest_path) end
         os.remove(part)
         return nil, true, "Could not complete cache download: " .. tostring(rename_error)
     end
