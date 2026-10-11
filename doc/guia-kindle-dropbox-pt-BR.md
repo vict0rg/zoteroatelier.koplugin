@@ -118,6 +118,24 @@ zoteroapi.lua:1539: in function 'checkZoteroKey'
 
 **Situação:** a causa foi confirmada pelo log e a correção está no fork; a nova tentativa de sincronização no Kindle ainda precisa ser validada.
 
+### Problema adicional no Kindle: versão remota atualizada, banco local vazio
+
+A comparação em modo somente leitura confirmou no Kindle: `PRAGMA user_version = 0`, **0 coleções**, **0 itens**, **0 anexos**, **sem a coleção raiz `/`**, mas a biblioteca já marcada com o cursor remoto `38750`. O Flatpak, por contraste, apresentou 85 coleções, 602 itens e 260 anexos.
+
+A investigação do bootstrap revelou **aspas duplas** em valores textuais da inserção em `itemTypes` (por exemplo `"attachment"`). Dependendo da configuração SQLite, isso é interpretado como nome de coluna e pode interromper a inicialização antes de criar a coleção raiz. A consequência é especialmente grave porque as instruções `INSERT ... SELECT` não inserem nenhuma coleção sem o pai `/` nem itens sem suas definições de tipo, e a versão remota ainda podia ser gravada como sincronizada.
+
+A branch experimental agora:
+- usa literais SQL entre aspas simples na população de `itemTypes`;
+- assegura a presença da coleção raiz e das definições de tipos;
+- verifica a versão do esquema antes de considerá-lo inicializado;
+- reconhece um banco **comprovadamente vazio e parcialmente inicializado**, e zera **somente o cursor remoto**, forçando a recuperação dos metadados no próximo `Synchronize`;
+- recusa concluir uma primeira sincronização se a API retornou dados, mas o banco persistiu com zero registros;
+- preserva a última etapa no arquivo de diagnóstico.
+
+Com o KOReader **fechado** e o Kindle conectado por USB, execute novamente o script de atualização do tópico anterior. O script fará backup do `zotero.db` presente no Kindle, bem como do código anterior, antes de copiar o fix. Em seguida, ejete o Kindle, inicie o KOReader e use **Synchronize**, sem escolher `Resync entire collection` e **sem excluir arquivos manualmente**.
+
+**A recuperação real ainda precisa ser confirmada no Kindle** após essa atualização.
+
 ## 8. Dúvidas frequentes
 
 **Os PDFs e EPUBs somem quando desligo o Wi-Fi?**  
