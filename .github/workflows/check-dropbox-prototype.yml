@@ -30,3 +30,4 @@ jobs:
           python3 -m py_compile tools/configurar_dropbox_oauth.py
           bash -n tools/testar_flatpak.sh
           bash -n tools/atualizar_progresso_kindle.sh
+          bash -n tools/mover_storage_para_documents_kindle.sh
