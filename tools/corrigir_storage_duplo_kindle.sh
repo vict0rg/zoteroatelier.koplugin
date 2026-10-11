@@ -24,6 +24,10 @@ MP="$(findmnt -rn -T "$MOUNT" -o TARGET 2>/dev/null || true)"
     die "Kindle não encontrado como unidade USB montada em $MOUNT (findmnt: $MP)."
 [[ -d "$PLUGIN" && -f "$PLUGIN/_meta.lua" && -f "$PLUGIN/zoteroapi.lua" ]] ||
     die "Plugin Zotero Atelier não encontrado: $PLUGIN"
+# Newer Zotero API requires this module; avoid installing code that cannot
+# initialize at KOReader startup. Use the separate safe hotfix installer first.
+[[ -f "$PLUGIN/zotero_file_validation.lua" ]] ||
+    die "Falta zotero_file_validation.lua. Primeiro execute tools/corrigir_download_pdf_kindle.sh para atualizar os arquivos dependentes."
 [[ -d "$ZOTERO" && -d "$MOUNT/documents" ]] ||
     die "Pastas do Kindle não encontradas. Operação cancelada."
 for d in "$ZOTERO" "$MOUNT/documents" "$MOUNT/documents/Zotero" "$OLD" "$NEW"; do
