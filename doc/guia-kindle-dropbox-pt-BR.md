@@ -1,6 +1,6 @@
 # Guia de uso — Zotero Atelier + Dropbox no KOReader
 
-**Estado em 11/10/2026:** integração experimental. A autorização do Dropbox e a abertura de **um PDF e um EPUB** foram confirmadas no **KOReader Flatpak / Linux Mint**. **No Kindle Oasis, após corrigir a inicialização do SQLite, o usuário confirmou que a sincronização passou a funcionar e conseguiu abrir um artigo e um livro EPUB pelo Zotero Atelier.** A reabertura sem Wi-Fi e a confirmação independente de que esses dois arquivos específicos foram baixados do Dropbox ainda estão pendentes.
+**Estado em 11/10/2026:** integração experimental. A autorização do Dropbox e a abertura de **um PDF e um EPUB** foram confirmadas no **KOReader Flatpak / Linux Mint**. **No Kindle Oasis, após corrigir a inicialização do SQLite, o usuário confirmou que a sincronização passou a funcionar e conseguiu abrir um artigo e um livro EPUB pelo Zotero Atelier.** **A reabertura sem Wi-Fi já foi confirmada:** os anexos permaneceram no diretório `storage` local do Kindle e abriram normalmente offline. A confirmação independente da origem de download de cada arquivo ainda não foi feita.
 
 Este guia descreve o comportamento **implementado no código**; os testes pendentes são indicados explicitamente.
 
@@ -15,6 +15,8 @@ Este guia descreve o comportamento **implementado no código**; os testes penden
 **Não é leitura por streaming.** O Dropbox é acessado para baixar um arquivo quando necessário; o documento é gravado no armazenamento local do aparelho. O recurso de Dropbox é **somente leitura**: não envia alterações, anotações ou PDFs ao Dropbox.
 
 As chaves de anexos não são as chaves das referências bibliográficas correspondentes.
+
+**Novo teste confirmado em 11/10/2026:** depois da leitura inicial, os arquivos permaneceram no `storage` local do Kindle Oasis e puderam ser abertos normalmente com o Wi-Fi desligado. Isso valida o funcionamento do cache de leitura offline no aparelho.
 
 ## 2. Pré-requisitos
 
