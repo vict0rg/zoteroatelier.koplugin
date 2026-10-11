@@ -1464,7 +1464,12 @@ function Plugin:onZoteroSyncAction()
             message = tostring(message or _("Working..."))
             if message == previous_status then return end
             previous_status = message
-            saveStatus(message)
+            -- Keep filenames and server error details out of the diagnostic file.
+            if message:find("Error downloading attachment", 1, true) then
+                saveStatus("Step 4/4: an attachment download failed (see KOReader log)")
+            else
+                saveStatus(message)
+            end
 
             if dialog then
                 UIManager:close(dialog)
