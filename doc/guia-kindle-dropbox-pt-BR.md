@@ -30,7 +30,7 @@ A integração foi implementada para anexos do Zotero dos tipos `imported_file` 
 
 ## 3. Instalar no Linux Mint, testar e configurar o Dropbox
 
-1. Faça backup do plugin. Para KOReader **Flatpak** (`rocks.koreader.KOReader`), com o aplicativo totalmente fechado, utilize o instalador experimental [`tools/testar_flatpak.sh`](../tools/testar_flatpak.sh), que faz backup e atualiza quatro arquivos do plugin.
+1. Faça backup do plugin. Para KOReader **Flatpak** (`rocks.koreader.KOReader`), com o aplicativo totalmente fechado, utilize o instalador experimental [`tools/testar_flatpak.sh`](../tools/testar_flatpak.sh), que faz backup e atualiza seis arquivos do plugin.
 2. Reinicie o KOReader. Em **Zotero Atelier**, configure seu **Zotero User ID** e sua **API Key**, se necessário.
 3. Execute **Synchronize** para criar/atualizar o banco local de referências.
 4. Abra **Zotero Atelier → Settings → Configure Dropbox account → Dropbox app and storage folder**. Informe **App key** e o caminho **remoto** da pasta `storage` dentro do Dropbox. Exemplo: se a pasta no Linux for `/home/usuario/Dropbox/100-BIBLIOTECA_ZOTERO/storage`, o caminho **remoto** será `/100-BIBLIOTECA_ZOTERO/storage`.
@@ -125,7 +125,7 @@ curl -fL https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/featur
   && bash ~/Downloads/atualizar_progresso_kindle.sh
 ```
 
-O script salva backup dos dois arquivos anteriores e atualiza **somente `main.lua` e `zoteroapi.lua`**, preservando credenciais, banco de dados, anexos e anotações. **Não desmonte o Kindle durante uma sincronização ou enquanto o KOReader estiver utilizando os arquivos.**
+O script salva backup dos arquivos anteriores e atualiza cinco módulos de código (`main.lua`, `zoteroapi.lua`, `zotero_dropbox.lua`, `zotero_file_validation.lua` e `zotero_storage_manager.lua`), preservando credenciais, banco de dados, anexos e anotações. **Não desmonte o Kindle durante uma sincronização ou enquanto o KOReader estiver utilizando os arquivos.**
 
 Esta interface nova **ainda precisa de validação prática no Kindle Oasis**. Não altere uma instalação funcional durante um processo de sincronização em andamento.
 
