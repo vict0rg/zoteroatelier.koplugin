@@ -63,7 +63,7 @@ elif command -v luac >/dev/null 2>&1; then
 else
   echo "Aviso: sem compilador Lua local para checagem sintática."
 fi
-grep -Fq '"/mnt/us/koreader/zotero"' "$WORK/zoteroapi.lua" ||
+grep -Fq 'Device:isKindle()' "$WORK/zoteroapi.lua" ||
   die "O código baixado não contém a mudança específica para o Kindle; nada alterado."
 
 echo
