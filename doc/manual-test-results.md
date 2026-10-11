@@ -79,6 +79,14 @@ Follow-up USB diagnostics inspected a preserved backup of the nine-byte file pre
 
 A newly noticed `/mnt/us/documents/KOReader.sh` was inspected without executing it. The file is a 120,147-byte POSIX shell script with the header `# Name: KOReader`, `# Author: KOReader team`, an embedded Base64 PNG icon, `# DontUseFBInk`, and launch line `/var/local/kmc/bin/kpm launch koreader --asap`. This is a KPM-based launcher and should **not** be treated as a disposable Zotero cache file. The source of its modification timestamp on 2026-10-11 at 20:31 local time was not established.
 
+## Kindle crash when opening experimental storage-cleanup menu (2026-10-11)
+
+The user installed the five-file Zotero Atelier plugin update and reported that the KOReader app **exited immediately** on selecting **Maintenance → Zotero storage and cleanup**. This indicates a runtime failure in the experimental storage viewer; the precise root cause is **not yet known** because the KOReader crash traceback has not been obtained.
+
+The cleanup manager only invokes `os.remove` inside a separate **Delete selected downloads → ConfirmBox** workflow, not while opening its report. No evidence of document deletion from this crash. To protect the working Zotero/Dropbox integration, commit `9704e485874b723c8e800e659d1af9b48e654ae8` disables only the menu's call to `StorageManager.show(self)` and replaces it with a short informational dialog. An independent code-only installer `tools/desativar_limpeza_kindle.sh` backs up and replaces **only `main.lua`**, leaving the actual PDF/EPUB files, `.sdr`, database, API/Dropbox configuration and other Lua modules untouched.
+
+**Do not re-enable/claim the space panel is fixed until the crash trace has been evaluated and a device test passes.**
+
 ## Not yet established
 
 - Broader Kindle compatibility, performance, large-library behavior, and repeatability beyond the successful Oasis smoke test
