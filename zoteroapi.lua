@@ -8,6 +8,7 @@ local sha2 = require("ffi/sha2")
 local SQ3 = require("lua-ljsqlite3/init")
 local logger = require("logger")
 local Annotations = require("annotations")
+local DropboxBridge = require("zotero_dropbox")
 local _ = require("gettext")
 -- For my annotation routines:
 local DocSettings = require("docsettings")
@@ -2248,6 +2249,25 @@ function API.downloadAndGetPath(key, download_callback)
     end
     if localPath then
         return localPath, nil
+    end
+
+    -- Optional on-demand Dropbox fallback, after local lookup and before Zotero Storage.
+    -- Read-only Dropbox access; normal Zotero file download remains the fallback.
+    if item.data.linkMode == "imported_file" or item.data.linkMode == "imported_url" then
+        local cache_dir, cache_path = API.getDirAndPath(item)
+        local retrieved, attempted, dropbox_error = DropboxBridge.tryDownload(item, cache_dir, cache_path)
+        if retrieved then
+            API.getAttachmentInfo(item, retrieved)
+            local attached, attach_err = pcall(API.attachItemAnnotations, item, nil, retrieved)
+            if not attached then
+                logger.warn("Zotero Atelier Dropbox: annotation read failed: " .. tostring(attach_err))
+            end
+            API.setAttachmentVersionByKey(key, item.version)
+            return retrieved, nil
+        end
+        if attempted and dropbox_error then
+            logger.warn("Zotero Atelier Dropbox: " .. tostring(dropbox_error))
+        end
     end
 
     if item.data.linkMode == "linked_file" then
