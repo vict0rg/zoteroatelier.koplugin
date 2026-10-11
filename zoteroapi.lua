@@ -1650,9 +1650,9 @@ function API.fetchCollectionPaginated(collection_url, headers, callback)
     end
 
     if callback then
-        return library_version, nil
+        return library_version, nil, collection_size
     else
-        return items, nil
+        return items, nil, collection_size
     end
 end
 
@@ -1792,7 +1792,7 @@ function API.fetchZoteroItems(since, progress_callback)
 
     local annotationTypes = Annotations.supportedZoteroTypes()
 
-    local r, e = API.fetchCollectionPaginated(items_url, headers, function(partial_entries, percentage, processed, total)
+    local r, e, expected_item_count = API.fetchCollectionPaginated(items_url, headers, function(partial_entries, percentage, processed, total)
         for i = 1, #partial_entries do
             -- Ruthlessly update our local items
             local item = partial_entries[i]
@@ -1872,6 +1872,7 @@ function API.fetchZoteroItems(since, progress_callback)
     if e ~= nil then
         return e
     end
+    return nil, expected_item_count
 end
 
 -- Fetch (new) collections from Zotero server and organise them into the local sqlite database
@@ -1906,7 +1907,7 @@ function API.fetchZoteroCollections(since, progress_callback)
     local nestedCollections = {}
     local nCnt = 0
 
-    local r, e = API.fetchCollectionPaginated(collections_url, headers, function(partial_entries, percentage, processed, total)
+    local r, e, expected_collection_count = API.fetchCollectionPaginated(collections_url, headers, function(partial_entries, percentage, processed, total)
         for i = 1, #partial_entries do
             -- Ruthlessly update our local items
             local collection = partial_entries[i].data
@@ -1959,7 +1960,7 @@ function API.fetchZoteroCollections(since, progress_callback)
         end
         stmt_update_parentCollection:close()
     end
-    return r, e
+    return r, e, expected_collection_count
 end
 
 -- Sync local db with zotero server
@@ -2022,7 +2023,7 @@ function API.syncAllItems(progress_callback)
 	--]]
 
     callback("Step 2/4: requesting Zotero collections...")
-    local r, e = API.fetchZoteroCollections(since, function(status)
+    local r, e, expected_collections = API.fetchZoteroCollections(since, function(status)
         callback("Step 2/4: " .. status)
     end)
     if e ~= nil then
@@ -2030,13 +2031,26 @@ function API.syncAllItems(progress_callback)
     end
 
     callback("Step 3/4: requesting Zotero items...")
-    e = API.fetchZoteroItems(since, function(status)
+    local expected_items
+    e, expected_items = API.fetchZoteroItems(since, function(status)
         callback("Step 3/4: " .. status)
     end)
     if e ~= nil then
         return e
     end
 
+    -- On an incomplete Kindle database INSERT...SELECT could silently save
+    -- nothing. Do not mark the first sync complete in that situation.
+    if since == 0 then
+        local stored_collections = tonumber(db:rowexec("SELECT COUNT(*) FROM collections;")) or 0
+        local stored_items = tonumber(db:rowexec("SELECT COUNT(*) FROM items;")) or 0
+        if (expected_collections or 0) > 0 and stored_collections <= 1 then
+            return "Zotero sync did not save downloaded collections (SQLite database incomplete)."
+        end
+        if (expected_items or 0) > 0 and stored_items == 0 then
+            return "Zotero sync did not save downloaded items (SQLite database incomplete)."
+        end
+    end
     API.setUserLibraryVersion(r)
 
     callback("Step 4/4: checking offline collection downloads...")
