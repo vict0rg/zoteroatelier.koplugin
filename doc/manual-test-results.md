@@ -36,6 +36,12 @@ After applying the repair and retrying **Synchronize**, the tester reported that
 
 This is a significant *manual* Kindle compatibility result, not evidence of universal compatibility or a production release. The tester did not separately confirm the article's precise file format, whether the specific Kindle documents were initially absent from local storage, or the network source of each individual file download.
 
+## New Kindle documents cover-gallery layout — awaiting device validation (2026-10-11)
+
+The Kindle owner uses `/mnt/us/documents` as the KOReader home folder with recursive subfolder display and a cover mosaic. After a reported file-browser freeze while browsing an internal `/mnt/.../storage` directory and a forced Kindle restart, the experimental fork was modified so its **Kindle-specific** download destination is `/mnt/us/documents/Zotero/storage/<attachment-key>/<filename>`. The regular KOReader `zotero.db`, OAuth settings and logs remain in `/mnt/us/koreader/zotero`; Flatpak keeps its old destination.
+
+A backup-enabled, no-overwrite USB migration script was added to relocate the entire old `storage` tree, including sidecar metadata, within the Kindle volume. The script refuses to merge if both old and new storage trees exist. **This change is implemented and published but has NOT yet been installed or validated on the user's Kindle.** The navigation freeze's root cause remains unknown; this is a requested organization change, not a demonstrated fix for that crash.
+
 ## Not yet established
 
 - Broader Kindle compatibility, performance, large-library behavior, and repeatability beyond the successful Oasis smoke test
