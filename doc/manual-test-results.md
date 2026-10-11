@@ -42,6 +42,12 @@ The Kindle owner uses `/mnt/us/documents` as the KOReader home folder with recur
 
 A backup-enabled, no-overwrite USB migration script was added to relocate the entire old `storage` tree, including sidecar metadata, within the Kindle volume. The script refuses to merge if both old and new storage trees exist. **This change is implemented and published but has NOT yet been installed or validated on the user's Kindle.** The navigation freeze's root cause remains unknown; this is a requested organization change, not a demonstrated fix for that crash.
 
+## Storage manager feature — code published, Kindle test pending
+
+Added `zotero_storage_manager.lua` and a **Maintenance → Zotero storage and cleanup** menu entry. Its view uses KOReader's disk-space helper, scans current/legacy plugin attachment directories for PDFs/EPUBs matching exact Zotero metadata keys/filenames, and provides initially unchecked category selectors plus a two-stage confirmation before removing the selected original files. No database, credentials, .sdr sidecars or shared CR3 processing cache are deleted. The optional Kindle installer is `tools/instalar_gerenciador_espaco_kindle.sh`.
+
+**Not yet executed or tested on the user's Kindle.** The user subsequently reported the KOReader file browser still showing `/mnt/us/koreader/zotero/storage/<KEY>` after invoking the earlier migration. This may be a remembered browser directory, an incomplete migration, or a code-path issue. Until the actual directory contents and installed plugin are checked, **do not remove the legacy storage tree** and do not infer that the move succeeded from the screenshot alone. The new Kindle device detection uses KOReader's `Device:isKindle()`, rather than a hard-coded data-dir equality; this additional change also awaits physical validation.
+
 ## Not yet established
 
 - Broader Kindle compatibility, performance, large-library behavior, and repeatability beyond the successful Oasis smoke test
