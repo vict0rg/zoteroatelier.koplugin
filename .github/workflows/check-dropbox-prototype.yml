@@ -1,0 +1,30 @@
+name: Experimental Dropbox syntax checks
+
+on:
+  push:
+    branches:
+      - feature/dropbox-on-demand
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lua 5.1 compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.1
+      - name: Check KOReader Lua syntax
+        run: |
+          luac5.1 -p annotation_panel.lua
+          luac5.1 -p zoteroapi.lua
+          luac5.1 -p zotero_dropbox.lua
+      - name: Check OAuth helper and installation shell script syntax
+        run: |
+          python3 -m py_compile tools/configurar_dropbox_oauth.py
+          bash -n tools/testar_flatpak.sh
