@@ -104,48 +104,48 @@ CREATE TABLE IF NOT EXISTS itemAnnotations (
 ]]
 
 local ZOTERO_DB_INIT_ITEMTYPES = [[
-INSERT INTO itemTypes(itemTypeID,typeName)
+INSERT OR IGNORE INTO itemTypes(itemTypeID,typeName)
 VALUES
-(1,"annotation"          ),
-(2,"artwork"             ),
-(3,"attachment"          ),
-(4,"audioRecording"      ),
-(5,"bill"                ),
-(6,"blogPost"            ),
-(7,"book"                ),
-(8,"bookSection"         ),
-(9,"case"                ),
-(10,"computerProgram"    ),
-(11,"conferencePaper"    ),
-(12,"dictionaryEntry"    ),
-(13,"document"           ),
-(14,"email"              ),
-(15,"encyclopediaArticle"),
-(16,"film"               ),
-(17,"forumPost"          ),
-(18,"hearing"            ),
-(19,"instantMessage"     ),
-(20,"interview"          ),
-(21,"journalArticle"     ),
-(22,"letter"             ),
-(23,"magazineArticle"    ),
-(24,"manuscript"         ),
-(25,"map"                ),
-(26,"newspaperArticle"   ),
-(27,"note"               ),
-(28,"patent"             ),
-(29,"podcast"            ),
-(30,"preprint"           ),
-(31,"presentation"       ),
-(32,"radioBroadcast"     ),
-(33,"report"             ),
-(34,"statute"            ),
-(35,"thesis"             ),
-(36,"tvBroadcast"        ),
-(37,"videoRecording"     ),
-(38,"webpage"            ),
-(39,"dataset"            ),
-(40,"standard"           );
+(1,'annotation'          ),
+(2,'artwork'             ),
+(3,'attachment'          ),
+(4,'audioRecording'      ),
+(5,'bill'                ),
+(6,'blogPost'            ),
+(7,'book'                ),
+(8,'bookSection'         ),
+(9,'case'                ),
+(10,'computerProgram'    ),
+(11,'conferencePaper'    ),
+(12,'dictionaryEntry'    ),
+(13,'document'           ),
+(14,'email'              ),
+(15,'encyclopediaArticle'),
+(16,'film'               ),
+(17,'forumPost'          ),
+(18,'hearing'            ),
+(19,'instantMessage'     ),
+(20,'interview'          ),
+(21,'journalArticle'     ),
+(22,'letter'             ),
+(23,'magazineArticle'    ),
+(24,'manuscript'         ),
+(25,'map'                ),
+(26,'newspaperArticle'   ),
+(27,'note'               ),
+(28,'patent'             ),
+(29,'podcast'            ),
+(30,'preprint'           ),
+(31,'presentation'       ),
+(32,'radioBroadcast'     ),
+(33,'report'             ),
+(34,'statute'            ),
+(35,'thesis'             ),
+(36,'tvBroadcast'        ),
+(37,'videoRecording'     ),
+(38,'webpage'            ),
+(39,'dataset'            ),
+(40,'standard'           );
 ]]
 
 -- TODO: Check if this makes sense to remove
@@ -210,7 +210,7 @@ INSERT INTO libraries(type, editable, name) SELECT 'user',1,'' WHERE NOT EXISTS(
 local ZOTERO_DB_INIT_COLLECTIONS = [[
 -- only insert item if table is empty:
 -- 'Fake collection' for items in root
-INSERT INTO collections(collectionName, libraryID, key) SELECT '',1,'/' WHERE NOT EXISTS(SELECT collectionID FROM collections);
+INSERT INTO collections(collectionName, libraryID, key) SELECT '',1,'/' WHERE NOT EXISTS(SELECT 1 FROM collections WHERE key='/');
 ]]
 
 local ZOTERO_CREATE_ITEMKEY_INDEX = [[
@@ -517,25 +517,45 @@ function API.openDB()
             logger.info("Zotero: db version is 0. Set up tables.")
             API.db:exec(ZOTERO_DB_SCHEMA)
             logger.info("Zotero: Set up user library.")
-            API.db:rowexec(ZOTERO_DB_INIT_LIBS)
-            local cnt = API.db:rowexec(ZOTERO_DB_CHANGES)
-            if cnt ~= nil then
-                logger.info("Zotero: Changes in libraries table: ", tonumber(cnt))
+            API.db:exec(ZOTERO_DB_INIT_LIBS)
+            -- SQLite builds used by Kindle/KOReader may disable double-quoted
+            -- string literals. Older versions of the seed statement used
+            -- "attachment" instead of 'attachment', stopping initialization
+            -- before the root collection and PRAGMA user_version were created.
+            logger.info("Zotero: Ensure item type definitions.")
+            API.db:exec(ZOTERO_DB_INIT_ITEMTYPES)
+            logger.info("Zotero: Ensure root collection.")
+            API.db:exec(ZOTERO_DB_INIT_COLLECTIONS)
+
+            local type_count = tonumber(API.db:rowexec("SELECT COUNT(*) FROM itemTypes;")) or 0
+            local root_count = tonumber(API.db:rowexec("SELECT COUNT(*) FROM collections WHERE key = '/';")) or 0
+            if type_count < 40 or root_count ~= 1 then
+                error(("Zotero database initialization incomplete: itemTypes=%d, rootCollections=%d"):format(
+                    type_count, root_count))
             end
-            local cnt = API.db:rowexec("SELECT COUNT(*) FROM itemTypes")
-            if cnt == 0 then
-                logger.info("Zotero: Set up user itemTypes.")
-                API.db:exec(ZOTERO_DB_INIT_ITEMTYPES)
-                local cnt = API.db:rowexec(ZOTERO_DB_CHANGES)
-                if cnt ~= nil then
-                    logger.info("Zotero: Changes in itemTypes table: ", tonumber(cnt))
+
+            -- A previous failed first sync could already have written the
+            -- remote Zotero library version despite saving zero actual items.
+            -- Reset ONLY that demonstrably empty, uninitialized database's
+            -- sync cursor, to force a full refetch without dropping any tables,
+            -- cached documents, annotations, or credentials.
+            local item_count = tonumber(API.db:rowexec("SELECT COUNT(*) FROM items;")) or 0
+            local coll_count = tonumber(API.db:rowexec("SELECT COUNT(*) FROM collections;")) or 0
+            if item_count == 0 and coll_count == 1 then
+                local old_cursor = tonumber(API.db:rowexec("SELECT version FROM libraries WHERE libraryID = 1;")) or 0
+                if old_cursor > 0 then
+                    logger.warn("Zotero: empty incomplete DB with nonzero sync cursor; resetting cursor to refetch")
+                    API.db:exec("UPDATE libraries SET version = 0 WHERE libraryID = 1;")
+                    API.libVersion = 0
                 end
             end
-            logger.info("Zotero: Set up root collection.")
-            API.db:exec(ZOTERO_DB_INIT_COLLECTIONS)
-            -- Create index for item keys
+
             API.db:exec(ZOTERO_CREATE_ITEMKEY_INDEX)
             API.setDatabaseVersion(db_version)
+            local final_version = tonumber(API.db:rowexec("PRAGMA user_version;")) or 0
+            if final_version ~= db_version then
+                error("Zotero database schema version could not be saved")
+            end
         else
             API.getUserLibraryVersion()
             logger.info("Zotero: Local db version: " .. API.libVersion)
