@@ -1,6 +1,6 @@
 # Guia de uso — Zotero Atelier + Dropbox no KOReader
 
-**Estado em 11/10/2026:** integração experimental. A autorização do Dropbox e a abertura de **um PDF e um EPUB** foram confirmadas no **KOReader Flatpak / Linux Mint**. O plugin foi copiado para um **Kindle Oasis**, cuja sincronização inicial de referências está em andamento; **a abertura e a reabertura sem Wi-Fi no Kindle ainda não foram confirmadas**.
+**Estado em 11/10/2026:** integração experimental. A autorização do Dropbox e a abertura de **um PDF e um EPUB** foram confirmadas no **KOReader Flatpak / Linux Mint**. **No Kindle Oasis, após corrigir a inicialização do SQLite, o usuário confirmou que a sincronização passou a funcionar e conseguiu abrir um artigo e um livro EPUB pelo Zotero Atelier.** A reabertura sem Wi-Fi e a confirmação independente de que esses dois arquivos específicos foram baixados do Dropbox ainda estão pendentes.
 
 Este guia descreve o comportamento **implementado no código**; os testes pendentes são indicados explicitamente.
 
@@ -134,7 +134,7 @@ A branch experimental agora:
 
 Com o KOReader **fechado** e o Kindle conectado por USB, execute novamente o script de atualização do tópico anterior. O script fará backup do `zotero.db` presente no Kindle, bem como do código anterior, antes de copiar o fix. Em seguida, ejete o Kindle, inicie o KOReader e use **Synchronize**, sem escolher `Resync entire collection` e **sem excluir arquivos manualmente**.
 
-**A recuperação real ainda precisa ser confirmada no Kindle** após essa atualização.
+**Resultado em 11/10/2026: confirmado pelo usuário.** Depois da atualização, o Kindle Oasis sincronizou e abriu um artigo e um livro EPUB. Persistem testes de reabertura offline, origem exata dos arquivos no Dropbox e robustez de sincronizações futuras.
 
 ## 8. Dúvidas frequentes
 
