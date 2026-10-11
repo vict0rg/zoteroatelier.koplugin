@@ -64,6 +64,12 @@ curl -fL https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/featur
 ```
 
 
+### Notice: experimental storage cleanup temporarily disabled on Kindle
+
+A Kindle test reported KOReader closing when the user entered the **Maintenance → Zotero storage and cleanup** screen. The exact exception is still under investigation. To avoid further crashes, the branch currently **disables this menu action** and shows an informational message; ordinary browsing, syncing, Dropbox downloads and reading remain enabled. The feature's backend module remains in the branch but should not be invoked on Kindle before a diagnosis.
+
+On an already-updated Kindle, with KOReader **fully closed** and the device attached by USB, execute the code-only [emergency disable installer](tools/desativar_limpeza_kindle.sh). This script backs up and replaces only `main.lua` (no PDF, EPUB, credentials, annotation or database writes). The later storage-cleanup installation script currently also fetches the disabled main.lua, and thus will not activate the screen.
+
 ## Disk usage and opt-in deletion of Zotero downloads (experimental)
 
 A new **Zotero Atelier → Maintenance → Zotero storage and cleanup** dialog shows the device's total/available space and the size/count of **locally cached Zotero PDF/EPUB attachments**, broken down by the current download folder and a separate legacy folder if present. All selection checkboxes begin **unchecked**. The user must select a category, press **Delete selected downloads**, then accept a second confirmation. Actual disk reclamation is estimated from individual file sizes (filesystem allocation may differ).
