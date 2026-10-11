@@ -58,13 +58,37 @@ Transferir uma credencial OAuth entre dispositivos é uma possibilidade técnica
 ## 5. Abertura e leitura offline
 
 1. **Primeira vez, com Wi-Fi:** sincronize os metadados do Zotero no Kindle, selecione uma referência e abra seu PDF ou EPUB. Se o anexo ainda não existir localmente, o Dropbox será consultado e **somente aquele arquivo** será baixado.
-2. **Depois do download:** o plugin grava uma cópia em `<pasta de dados do KOReader>/zotero/storage/<CHAVE_DO_ANEXO>/<NOME_DO_ARQUIVO>`. No Kindle que utiliza `/mnt/us/koreader` como pasta de dados, isso corresponde normalmente a `/mnt/us/koreader/zotero/storage/...`.
+2. **Depois do download (branch atual):** no **Kindle Oasis**, o plugin salva o anexo em `/mnt/us/documents/Zotero/storage/<CHAVE_DO_ANEXO>/<NOME_DO_ARQUIVO>`, permitindo mostrar as capas no mosaico de `documents` quando estiver habilitada a exibição recursiva de subpastas. No **Flatpak**, permanece em `<pasta de dados do KOReader>/zotero/storage/<CHAVE_DO_ANEXO>/<NOME_DO_ARQUIVO>`. Os metadados, o banco SQLite e as credenciais continuam no diretório `koreader/zotero`.
 3. **Nas aberturas seguintes:** o Zotero Atelier **procura o arquivo local primeiro**. Se o arquivo existir, estiver utilizável e as verificações de versão o aceitarem, deve ser possível abri-lo **sem Wi-Fi**. O documento também pode ser acessível pelo navegador de arquivos do KOReader.
-4. **Teste indispensável no Kindle:** abra um documento com o Wi-Fi ligado; saia dele; **desative o Wi-Fi**; volte ao Atelier e abra **o mesmo documento**. Em seguida, se necessário, localize o arquivo no navegador do KOReader. **Esse cenário ainda não foi validado no Oasis.**
+4. **Teste offline:** abra um documento com o Wi-Fi ligado; saia dele; **desative o Wi-Fi**; volte ao Atelier e abra **o mesmo documento**. **Esse cenário foi validado pelo usuário no Kindle Oasis antes da migração de pasta.** Após mudar para `documents`, repita a abertura para confirmar o novo caminho.
 5. Arquivos **não baixados** exigem conexão na primeira abertura. **Synchronize**, download de novos arquivos e sincronização de anotações também exigem acesso à rede.
 6. Se a cópia local for apagada, o espaço de dados do KOReader for limpo ou uma verificação de versão exigir nova busca, uma nova transferência poderá ser necessária.
 
 **Atenção:** a sincronização de anotações é uma função distinta do download de arquivos. A existência do PDF/EPUB local não significa que as anotações já estejam sincronizadas na nuvem. Durante os primeiros testes, desative **Write highlights into PDF files** para não modificar acidentalmente o PDF original.
+
+## 5.1. Colocar os livros do Zotero no mosaico de capas do Kindle
+
+A partir desta versão experimental, no Kindle com KOReader em `/mnt/us/koreader`, os anexos baixados vão para:
+
+```text
+/mnt/us/documents/Zotero/storage/CHAVE_DO_ANEXO/Livro.epub
+```
+
+O Dropbox **não muda de endereço**. O prefixo `storage` no Dropbox continua sendo apenas a pasta **remota**; o `documents/Zotero/storage` é a cópia **local** do Kindle. Os metadados da biblioteca, o banco `zotero.db`, os arquivos de credenciais e o histórico do andamento da sincronização continuam em `/mnt/us/koreader/zotero`. No Linux Mint/Flatpak, os downloads permanecem na localização anterior.
+
+**Migração da instalação já funcional:** com o KOReader completamente fechado e o Kindle montado via USB no Linux Mint, execute:
+
+```bash
+curl -fL https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/feature/dropbox-on-demand/tools/mover_storage_para_documents_kindle.sh \
+  -o ~/Downloads/mover_storage_para_documents_kindle.sh \
+  && bash ~/Downloads/mover_storage_para_documents_kindle.sh
+```
+
+O script verifica o volume USB, baixa e valida a sintaxe de `zoteroapi.lua` (se houver compilador Lua), cria backup do código anterior e do banco SQLite, e **move a pasta `storage` inteira** — com seus PDFs, EPUBs, `.sdr` e demais arquivos auxiliares — para dentro de `documents/Zotero`. O movimento ocorre dentro do mesmo volume do Kindle; não faz cópia integral dos livros para o computador. **Se ambas as pastas `storage` já existirem, interrompe sem mesclar ou substituir arquivos.** Não copie só os PDFs: os arquivos de configuração de leitura podem estar ao lado deles.
+
+Ejete o dispositivo antes de abrir o KOReader. Caso os atalhos de documentos recentes apontem para o endereço antigo, abra o livro novamente pelo Zotero Atelier ou pelo navegador `documents/Zotero`. Com a opção do navegador do KOReader de exibir conteúdo das subpastas, os documentos poderão aparecer no mosaico. A reabertura após a **migração** ainda precisa ser testada em aparelho real.
+
+**Travamento observado:** houve um congelamento relatado durante a navegação por um diretório interno `/mnt/.../storage` no Kindle, seguido de reinício forçado. A causa não foi identificada. A mudança de pasta melhora a organização e a descoberta de livros no navegador, mas **não constitui diagnóstico ou correção comprovada do travamento**.
 
 ## 6. Posso preparar uma coleção para uma viagem sem Wi-Fi?
 
@@ -118,7 +142,7 @@ zoteroapi.lua:1539: in function 'checkZoteroKey'
 
 **Correção experimental publicada:** a instrução usa `db:prepare(...)` e parâmetros ligados por `:bind(...)`, tanto para o nome quanto para os demais campos. **Não foi necessário apagar `zotero.db`, alterar a conta Zotero nem configurar novamente o Dropbox.** O instalador `tools/atualizar_progresso_kindle.sh` atualiza `zoteroapi.lua` e `main.lua` preservando o banco local.
 
-**Situação:** a causa foi confirmada pelo log e a correção está no fork; a nova tentativa de sincronização no Kindle ainda precisa ser validada.
+**Situação:** a correção foi validada em teste no Kindle Oasis; sincronização, navegação e abertura de documentos passaram após a atualização.
 
 ### Problema adicional no Kindle: versão remota atualizada, banco local vazio
 
@@ -136,12 +160,12 @@ A branch experimental agora:
 
 Com o KOReader **fechado** e o Kindle conectado por USB, execute novamente o script de atualização do tópico anterior. O script fará backup do `zotero.db` presente no Kindle, bem como do código anterior, antes de copiar o fix. Em seguida, ejete o Kindle, inicie o KOReader e use **Synchronize**, sem escolher `Resync entire collection` e **sem excluir arquivos manualmente**.
 
-**Resultado em 11/10/2026: confirmado pelo usuário.** Depois da atualização, o Kindle Oasis sincronizou e abriu um artigo e um livro EPUB. Persistem testes de reabertura offline, origem exata dos arquivos no Dropbox e robustez de sincronizações futuras.
+**Resultado em 11/10/2026: confirmado pelo usuário.** Depois da atualização, o Kindle Oasis sincronizou e abriu um artigo e um livro EPUB. A reabertura offline foi posteriormente confirmada; persistem a verificação independente da origem exata dos arquivos no Dropbox e testes de robustez de sincronizações futuras.
 
 ## 8. Dúvidas frequentes
 
 **Os PDFs e EPUBs somem quando desligo o Wi-Fi?**  
-Não por desligar o Wi-Fi: um download concluído corresponde a um arquivo gravado no aparelho, não a um streaming. A reabertura offline no Kindle ainda precisa ser confirmada experimentalmente.
+Não por desligar o Wi-Fi: um download concluído corresponde a um arquivo gravado no aparelho, não a um streaming. A reabertura offline já foi confirmada em teste manual no Kindle Oasis com o caminho antigo, antes da migração para `documents`.
 
 **Preciso sincronizar todas as referências a cada leitura?**  
 Não. A primeira sincronização cria o banco local; depois, `Synchronize` é usado quando quiser atualizar referências ou dados. Os anexos são transferidos sob demanda ou por download de coleção.
