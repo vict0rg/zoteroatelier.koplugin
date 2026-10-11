@@ -1,46 +1,69 @@
-# Zotero Atelier pour KOReader
+# Zotero Atelier + Dropbox for KOReader
 
-Plugin [KOReader](https://github.com/koreader/koreader) pour parcourir votre bibliothèque Zotero, ouvrir les pièces jointes, annoter (PDF / EPUB) et synchroniser les notes avec Zotero — y compris hors WebDAV.
+> **Experimental community fork** of [Atelier-Recherche/Zotero Atelier](https://github.com/Atelier-Recherche/zoteroatelier.koplugin). This repository is **not** the original project and is not an official Zotero, Dropbox, Amazon, or KOReader product.
+
+## Project purpose
+
+Enable a **Kindle running KOReader after a compatible jailbreak** to browse a personal Zotero library and **open its PDF/EPUB attachments stored in Dropbox**, downloading individual files **on demand** instead of storing the entire library on the Kindle or purchasing Zotero cloud storage.
+
+- **Zotero API:** bibliographic items, collections, and attachment metadata.
+- **Dropbox API:** retrieve the corresponding attachment by its Zotero **attachment key**, expected under `storage/ATTACHMENT_KEY/filename.pdf`.
+- **KOReader:** display downloaded documents on a jailbroken Kindle. The same experimental feature can first be tested on KOReader for desktop Linux (including Flatpak).
+- **Scope:** the personal Zotero library only. Group libraries and bidirectional Dropbox annotation uploads are **not** part of this experiment.
+
+**Development status:** the Dropbox integration is a proof of concept on the [`feature/dropbox-on-demand` branch](https://github.com/vict0rg/zoteroatelier.koplugin/tree/feature/dropbox-on-demand). It is **not yet verified on a real Dropbox account or Kindle**, and must not be treated as production-ready.
+
+**Jailbreak prerequisites:** this project does **not** jailbreak Kindles. Availability depends on the precise Kindle model and firmware. Consult the [KindleModding jailbreak guide](https://kindlemodding.org/jailbreaking/index.html) and the [KOReader official Kindle installation guide](https://github.com/koreader/koreader/wiki/Installation-on-Kindle-devices). Always verify compatibility before changing Kindle firmware or installing a jailbreak.
+
+**Testing / implementation:** see [Dropbox development notes](doc/dropbox-on-demand.md) in the feature branch. The original Zotero Atelier remains credited and its GPL-3.0 license is preserved. This fork's initial proposal and testing are by [@vict0rg](https://github.com/vict0rg), assisted by OpenAI ChatGPT (GPT-6); the [KOReader Dropbox provider](https://github.com/koreader/koreader/blob/master/plugins/cloudstorage.koplugin/providers/dropbox.lua) (KOReader contributors, AGPL-3.0) was used as an architectural reference, without copying its source code.
+
+## Original Zotero Atelier documentation
+
+This fork preserves the upstream Zotero Atelier functionality and attribution. See also the [original project](https://github.com/Atelier-Recherche/zoteroatelier.koplugin), the [English reference documentation](README.en.md), and the [preserved French documentation](README.fr.md).
+
+---
+
+# Original Zotero Atelier: features and usage
+
+[KOReader](https://github.com/koreader/koreader) plugin to browse your Zotero library, open attachments, annotate (PDF / EPUB), and sync notes with Zotero — including when files are not on WebDAV.
 
 > [!NOTE]
-> Projet repris et développé sous le nom **Zotero Atelier** (fork / continuation du plugin Zotero pour KOReader). Version bêta : les retours et PR sont les bienvenus.
+> Continued as **Zotero Atelier** (fork / continuation of the Zotero KOReader plugin). Beta: bug reports and PRs welcome.
 
-English version: [README.en.md](README.en.md)
+French original: [README.fr.md](README.fr.md)
 
-## Fonctionnalités
+## Features
 
-* Synchronisation via l’API Web Zotero
-* Ouverture des pièces jointes PDF / EPUB / HTML
-* Annotations bidirectionnelles avec Zotero (création, modification, suppression)
-* Écriture des surlignages **dans le PDF** (réglage activable) et/ou sync vers Zotero
-* Annotations **EPUB** (sidecar KOReader ↔ Zotero ; position approximative / xpointers)
-* Panneau **notes du document ouvert** (filtre, aller à la page, suppression)
-* **Recherche globale** dans les annotations de la bibliothèque locale
-* Téléchargement auto des collections marquées « offline »
-* Stockage **WebDAV** (Nextcloud, etc.)
-* **Fichiers locaux** hors WebDAV : dossier linked files, storage Zotero externe, mappings de chemins, recherche par nom de fichier, racines de recherche
-* Recherche d’entrées par titre et premier auteur
+* Sync via Zotero Web API
+* Open PDF / EPUB / HTML attachments
+* Bidirectional annotation sync (create, update, delete)
+* Write highlights **into the PDF** (toggle) and/or sync to Zotero
+* **EPUB** annotations (KOReader sidecar ↔ Zotero; approximate position / xpointers)
+* **Document annotations** panel (filter, jump to page, delete)
+* **Global search** across annotations in the local library
+* Auto-download for offline collections
+* **WebDAV** storage
+* **Local files** without WebDAV: linked-files folder, external Zotero storage, path mappings, basename search, search roots
+* Search entries by title and first author
 
-### Limites actuelles
+### Limitations
 
-* La recherche bibliographique reste basique (pas encore tags / DOI / tous les auteurs)
-* Sur EPUB, le positionnement exact type CFI Zotero n’est pas toujours parfait : texte, note et page/chapitre sont synchronisés en priorité
-* Si vous activez à la fois l’écriture dans le PDF et la sync Zotero, les surlignages peuvent apparaître en double selon les viewers
+* Bibliographic search is still basic (no full tags / DOI / all authors yet)
+* EPUB exact CFI positioning may be imperfect; text, note, and page/chapter sync first
+* Enabling both in-PDF writing and Zotero sync can show duplicate highlights depending on the viewer
 
 ## Installation
 
-1. Utilisez une version récente de KOReader
-2. Copiez le dossier du plugin (voir ci-dessous — **le nom doit finir par `.koplugin`**)
-3. **Quittez complètement puis relancez** KOReader
-4. Créez une clé API dans les [réglages Zotero](https://www.zotero.org/settings/keys) (notez le userID et la clé)
-5. Si besoin, configurez WebDAV (voir plus bas)
-6. Saisissez vos identifiants dans le menu du plugin, ou éditez le fichier de config
+1. Use a recent KOReader build
+2. Install the plugin folder (name **must** end with `.koplugin`)
+3. **Fully quit and restart** KOReader
+4. Create an API key in [Zotero Settings](https://www.zotero.org/settings/keys)
+5. Configure WebDAV if needed
+6. Enter credentials in the plugin menu or edit the config file
 
-### Où copier le plugin
+### Where to copy the plugin
 
-Le dossier **doit** s’appeler exactement `zoteroatelier.koplugin`.
-
-Il doit contenir au minimum `main.lua` et `_meta.lua` :
+The directory **must** be named exactly `zoteroatelier.koplugin`:
 
 ```
 zoteroatelier.koplugin/
@@ -53,135 +76,50 @@ zoteroatelier.koplugin/
 └── …
 ```
 
-| Plateforme | Chemin typique |
-|------------|----------------|
-| PC / Kobo / Kindle | `<install KOReader>/plugins/zoteroatelier.koplugin` |
+| Platform | Typical path |
+|----------|----------------|
+| PC / Kobo / Kindle | `<KOReader install>/plugins/zoteroatelier.koplugin` |
 | **Android** | `/sdcard/koreader/plugins/zoteroatelier.koplugin` |
-| Alternative | `<répertoire data KOReader>/plugins/zoteroatelier.koplugin` |
+| Alternative | `<KOReader data directory>/plugins/zoteroatelier.koplugin` |
 
-Sur Android, le dossier dans l’APK est souvent **non accessible en écriture** — préférez `/sdcard/koreader/plugins/`.
+Migrating from `zotero.koplugin`: rename/replace the folder and restart. Local data stays in `<KOReader data>/zotero/` for compatibility.
 
-Si vous migrez depuis l’ancien `zotero.koplugin`, renommez le dossier (ou remplacez-le), puis redémarrez. Les données locales restent dans `<data KOReader>/zotero/` (inchangé pour compatibilité).
+### Finding the plugin in KOReader
 
-### Où trouver le plugin dans KOReader
+- Top menu → **Search** → **Zotero Atelier**, or **Tools** → **Zotero Atelier**
+- Local files: Zotero Atelier → **Settings** → **Local files**
+- Enable/disable: Settings → **Plugin management** → **User plugins** → **Zotero Atelier**
 
-Ce plugin **n’apparaît pas** sous le menu Réglages (roue dentée) pour l’usage courant.
+## Usage
 
-- **Utilisation :** menu du haut → **Recherche** (loupe) → **Zotero Atelier**, ou **Outils** → **Zotero Atelier**
-- **Fichiers locaux / mappings :** Zotero Atelier → **Settings** → **Local files**
-- **Activer / désactiver :** Réglages → **Plugin management** → **User plugins** → **Zotero Atelier**
+Most library metadata stays on device. Apart from **Synchronize** (and downloading a missing file), the plugin avoids hitting the Zotero server.
 
-### Le plugin n’apparaît pas ?
+### Browse / Synchronize / Maintenance
 
-1. Vérifiez que le dossier se termine par `.koplugin`
-2. Vérifiez que `main.lua` et `_meta.lua` sont *dans* ce dossier
-3. Redémarrez KOReader complètement
-4. Contrôlez **Plugin management → User plugins**
-5. Sur Android : `/sdcard/koreader/plugins/zoteroatelier.koplugin`
-6. Sinon, cherchez `zotero` / `zoteroatelier` dans `crash.log`
-
-## Utilisation
-
-Le plugin conserve la plupart des métadonnées en local. Hormis **Synchronize** (et le téléchargement d’un fichier manquant), il évite d’appeler le serveur.
-
-### Browse
-
-Navigation dans les collections. Seuls les items avec au moins une pièce jointe supportée sont listés. Collections d’abord, puis items (ordre alphabétique). Les items sans collection sont à la racine.
-
-- **Tap :** ouvrir une sous-collection ou une pièce jointe (téléchargement si besoin) ; les annotations Zotero connues sont attachées au sidecar
-- **Appui long :** collection → offline ; item → fiche biblio + liste des pièces jointes
-- **Loupe :** recherche titre / premier auteur
-
-Geste possible : Réglages → Gestures → General → **Zotero Collection Browser**
-
-### Synchronize
-
-La première sync télécharge toutes les métadonnées (peut être long). Ensuite, sync incrémentale.
-
-1. Envoi des annotations locales (création / édition / suppression)
-2. Téléchargement des collections
-3. Téléchargement / catalogue des items
-4. Téléchargement des pièces jointes des collections offline
+Same workflow as before: browse collections, incremental sync, re-analyze / rescan / full resync.
 
 ### Annotations & notes
 
-Dans le menu **Zotero Atelier** :
+| Menu item | Role |
+|-----------|------|
+| **Document annotations** | Filterable list for the open document |
+| **Search annotations** | Search all synced annotations |
+| **Sync document annotations** | Immediate create/update/delete for the open file |
+| **Write highlights into PDF files** | Enable writing highlights into the PDF |
 
-| Entrée | Rôle |
-|--------|------|
-| **Document annotations** | Liste filtrable des notes du document ouvert (aller à la page, supprimer) |
-| **Search annotations** | Recherche dans les annotations de toute la biblio syncée |
-| **Sync document annotations** | Envoi immédiat create/update/delete pour le fichier ouvert |
-| **Write highlights into PDF files** | Active l’écriture des surlignages dans le fichier PDF |
+Annotation sync also runs on open/close when the file matches a Zotero attachment.
 
-La sync des annotations se déclenche aussi à l’ouverture et à la fermeture d’un document reconnu comme pièce jointe Zotero.
+### Local files
 
-### Maintenance
-
-- **Re-analyse local items** : recalcule attachments / annotations sans réseau
-- **Re-scan storage** : indexe les fichiers déjà présents localement
-- **Resync entire collection** : remet la base locale à zéro puis resync complète (dernier recours)
-
-### Settings — Local files
-
-Utile quand les PDF ne sont **pas** sur le stockage Zotero / WebDAV :
-
-- Dossier **linked files** (fichiers liés Zotero)
-- Dossier **external Zotero storage** (`storage/KEY/fichier`)
-- **Prefer local files** / **Allow outdated local files**
-- **Search root folders** + recherche par nom de fichier
-- **Path mappings** (préfixe PC → préfixe liseuse) et assistant **Suggest path mapping**
-
-### About/Info
-
-Version du plugin et statistiques de la bibliothèque locale.
-
----
+For PDFs not on Zotero storage / WebDAV: linked-files base, external storage (`storage/KEY/file`), path mappings, search roots, basename fallback, allow stale local files.
 
 ## Configuration
 
-### WebDAV
+Edit `<KOReader data>/zotero/meta.lua` (see French README for the full key list). WebDAV URL must point to a directory named `zotero`.
 
-Pour stocker les pièces jointes ailleurs que chez Zotero (ex. Nextcloud), voir le [manuel Zotero](https://www.zotero.org/support/sync).
+By default Zotero Atelier **enables** writing highlights into PDFs opened from the browser; turn that off in plugin settings if you prefer sidecar/Zotero only.
 
-L’URL WebDAV doit pointer vers un répertoire nommé `zotero`, par ex.  
-`https://votre-instance.tld/remote.php/dav/files/votre-user/zotero`  
-Préférez un mot de passe d’application.
+## Credits
 
-### Configuration manuelle
-
-Fichier `<data KOReader>/zotero/meta.lua` :
-
-```lua
-return {
-    ["api_key"] = "",           -- clé API Zotero
-    ["user_id"] = "",           -- user ID (entier)
-    ["webdav_enabled"] = false,
-    ["webdav_url"] = "",
-    ["webdav_user"] = "",
-    ["webdav_password"] = "",
-    ["prefer_local_files"] = true,
-    ["linked_files_enabled"] = false,
-    ["linked_files_base"] = "",
-    ["external_storage_enabled"] = false,
-    ["external_storage_dir"] = "",
-    ["allow_stale_local"] = true,
-    ["auto_disable_pdf_writing"] = false, -- false = écrire les highlights dans le PDF
-    ["path_mappings"] = {},
-    ["search_roots"] = {},
-}
-```
-
-### PDF : écrire ou non dans le fichier
-
-Par défaut, Zotero Atelier **active** l’écriture des surlignages dans le PDF à l’ouverture depuis le navigateur (réglage « Write highlights into PDF files »).  
-Désactivez cette option dans le plugin si vous préférez ne garder les notes que dans le sidecar / Zotero.
-
-Réglage global KOReader : Réglages → Document → Save document (write highlights into PDF).
-
----
-
-## Crédits
-
-Basé sur le plugin Zotero pour KOReader (communauté / forks successifs).  
-**Zotero Atelier** — reprise et extensions (annotations, notes, fichiers locaux).
+Based on the community Zotero KOReader plugin and subsequent forks.  
+**Zotero Atelier** — continued development (annotations, notes, local files).
