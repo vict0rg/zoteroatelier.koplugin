@@ -195,6 +195,20 @@ curl -fL https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/featur
 **Atenção:** esse reparador ainda precisa de validação no Kindle. Se apontar conflito, **pare e envie a saída**; não remova as pastas manualmente. O fato de o navegador continuar mostrando uma pasta antiga também pode ser um endereço lembrado pelo KOReader, diferente do caminho configurado como `Home` em `documents`.
 
 
+### PDF com poucos bytes não abre — reparo experimental
+
+Uma falha confirmada no Kindle foi um arquivo `.pdf` com **9 bytes de texto**, enquanto o PDF original no Dropbox sincronizado no Linux tinha **5.052.243 bytes** e era reconhecido como PDF de 16 páginas. Nesse caso, a mensagem do KOReader **"nenhum mecanismo de leitura"** decorre do arquivo local inválido, não de uma ausência de suporte a PDF.
+
+A branch foi corrigida para verificar assinaturas de PDFs/EPUBs, rejeitar arquivos locais inválidos e não permitir que o texto de uma resposta HTTP de erro seja gravado diretamente como documento final. Existe um instalador de código com backup:
+
+```bash
+curl -fL https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/feature/dropbox-on-demand/tools/corrigir_download_pdf_kindle.sh \
+  -o ~/Downloads/corrigir_download_pdf_kindle.sh \
+  && bash ~/Downloads/corrigir_download_pdf_kindle.sh
+```
+
+Executar **somente com o KOReader fechado e Kindle montado por USB**. Esse script atualiza `zoteroapi.lua`, `zotero_dropbox.lua` e `zotero_file_validation.lua`, mantendo os downloads, arquivos `.sdr`, banco Zotero e credenciais existentes. **Não repara automaticamente um PDF já corrompido.** Para esse, faça backup dos poucos bytes inválidos e copie ou baixe novamente o PDF correto. A recuperação e o código ainda aguardam validação prática no Kindle.
+
 ## 8. Dúvidas frequentes
 
 **Os PDFs e EPUBs somem quando desligo o Wi-Fi?**  
