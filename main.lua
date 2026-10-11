@@ -569,15 +569,21 @@ function Plugin:getZoteroSubMenu()
                         end,
                     },
                     {
-                        -- Temporarily disabled after a KOReader crash when
-                        -- entering the experimental cleanup dialog. Keep all
-                        -- Zotero/Dropbox synchronization and reading features.
-                        text = _("Zotero storage and cleanup (temporarily disabled)"),
+                        -- Open the storage report only as a read-only diagnostic.
+                        -- Catch runtime exceptions so the menu cannot bring down
+                        -- KOReader if the experimental screen encounters an error.
+                        text = _("Zotero storage report (read-only test)"),
                         callback = function()
-                            UIManager:show(InfoMessage:new({
-                                text = _("Storage cleanup is temporarily disabled while we investigate a Kindle crash. No files were deleted. Zotero and Dropbox browsing/downloads continue to work."),
-                                icon = "notice-info",
-                            }))
+                            local ok, err = xpcall(function()
+                                StorageManager.show(self)
+                            end, debug.traceback)
+                            if not ok then
+                                logger.err("Zotero storage report failed: ", tostring(err))
+                                UIManager:show(InfoMessage:new({
+                                    text = _("Storage report failed. Your books are safe; check KOReader crash.log."),
+                                    icon = "notice-warning",
+                                }))
+                            end
                         end,
                     },
                     {
