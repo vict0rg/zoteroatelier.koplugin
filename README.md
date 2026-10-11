@@ -80,6 +80,12 @@ curl -fL https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/featur
 
 The general Kindle update script now includes all three necessary code files (`main.lua`, `zoteroapi.lua`, and `zotero_storage_manager.lua`) to prevent missing-module errors.
 
+## Fixing a bogus nine-byte PDF on Kindle (experimental repair)
+
+One Kindle test revealed an attachment named `.pdf` which contained just **9 bytes of ASCII text**, while the original PDF from Dropbox was **5,052,243 bytes**. The Zotero Storage fallback had been writing HTTP responses straight into the final file, including possible error messages. The new branch validates PDF/EPUB headers before using cached attachments and downloads via a temporary file, rejecting bad responses; Dropbox on-demand is validated as well. This is a **header sanity check, not a full PDF/EPUB integrity verifier**.
+
+A [backup-enabled Kindle code-only hotfix](tools/corrigir_download_pdf_kindle.sh) installs `zoteroapi.lua`, `zotero_dropbox.lua`, and `zotero_file_validation.lua`. It **does not delete, move or repair documents** and **does not affect Flatpak**. The original bad file should be backed up and replaced with a verified original separately, preserving KOReader `.sdr` reading state. **This hotfix still needs on-device validation**.
+
 ## Original Zotero Atelier documentation
 
 This fork preserves the upstream Zotero Atelier functionality and attribution. See also the [original project](https://github.com/Atelier-Recherche/zoteroatelier.koplugin), the [English reference documentation](README.en.md), and the [preserved French documentation](README.fr.md).
