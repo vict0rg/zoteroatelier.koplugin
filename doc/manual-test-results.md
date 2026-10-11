@@ -48,6 +48,23 @@ Added `zotero_storage_manager.lua` and a **Maintenance → Zotero storage and cl
 
 **Not yet executed or tested on the user's Kindle.** The user subsequently reported the KOReader file browser still showing `/mnt/us/koreader/zotero/storage/<KEY>` after invoking the earlier migration. This may be a remembered browser directory, an incomplete migration, or a code-path issue. Until the actual directory contents and installed plugin are checked, **do not remove the legacy storage tree** and do not infer that the move succeeded from the screenshot alone. The new Kindle device detection uses KOReader's `Device:isKindle()`, rather than a hard-coded data-dir equality; this additional change also awaits physical validation.
 
+## Kindle PDF file containing 9 bytes instead of a PDF — confirmed diagnosis (2026-10-11)
+
+A specific Zotero attachment (Carrey et al., 2026, key `86T2GIJT`) opened incorrectly on the Kindle, yielding KOReader's "no reader engine for this file". A user-executed byte-for-byte comparison established:
+
+- Dropbox-synced Linux original: 5,052,243 bytes, PDF 1.7, 16 pages, SHA-256 `3b90ff38a2b00f95f84f0ded1ae8ed30c5ee6cad85d27fd403b85ab25d330c3b`
+- Kindle cached .pdf: **9 bytes of ASCII text**, SHA-256 `e3ebaa16dd9d9b9fc107c42183fb6cf9d22927e1af03dbbdfa0ccc38e4e4ac31`
+
+The original Zotero Storage fallback performed `https.request(... sink=ltn12.sink.file(io.open(targetPath, "wb")))`: an error response body could therefore be saved directly to the final PDF path and then mistakenly treated as a usable cached file. The exact HTTP status/content that produced these nine bytes has not yet been observed in the KOReader log. Dropbox on-demand previously accepted any nonzero file with HTTP 200 and also trusted nonempty old files without signature validation.
+
+New branch code now:
+- uses a small PDF/EPUB file-header validator for existing attachment resolution and freshly downloaded content;
+- writes Zotero Storage fallback responses to a temporary `.zotero-part` instead of the original filename, and promotes them only after successful HTTP response and file-header verification;
+- checks Dropbox downloads before rename and preserves any earlier invalid file as `.invalid-backup` if a replacement succeeds;
+- preserves the Zotero SQLite database, OAuth credentials, original reading .sdr files and KOReader shared cache.
+
+**Implementation only: not yet installed or validated on the physical Kindle.** A separate backup-enabled hotfix installer `tools/corrigir_download_pdf_kindle.sh` updates `zoteroapi.lua`, `zotero_dropbox.lua` and the new `zotero_file_validation.lua` without touching any downloaded documents. The nine-byte corrupt copy must be recovered separately, preferably from the known-good local Dropbox sync, and the PDF reopened on Kindle.
+
 ## Not yet established
 
 - Broader Kindle compatibility, performance, large-library behavior, and repeatability beyond the successful Oasis smoke test
