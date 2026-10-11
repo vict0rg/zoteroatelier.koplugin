@@ -226,7 +226,7 @@ function M.setEnabled(enabled)
 end
 
 local function base64url(bytes)
-    return sha2.bin_to_base64(bytes):gsub("+", "-"):gsub("/", "_"):gsub("=+$", "")
+    return sha2.bin_to_base64(bytes):gsub("%+", "-"):gsub("/", "_"):gsub("=+$", "")
 end
 
 function M.startAuthorization()
