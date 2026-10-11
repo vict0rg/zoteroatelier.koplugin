@@ -1,6 +1,6 @@
 # Experimental Dropbox attachment access (read-only)
 
-**Status (2026-10-11):** experimental, with **Dropbox OAuth, a PDF download/open, and an EPUB download/open manually confirmed on Linux Mint / KOReader Flatpak**. The feature has been copied to a Kindle Oasis, but successful attachment opening and offline reopening **have not yet been confirmed on the Kindle**. Keep backups; personal Zotero library only; no Zotero Groups or Dropbox annotation upload. See the [Portuguese setup and offline-use guide](guia-kindle-dropbox-pt-BR.md) and [test record](manual-test-results.md).
+**Status (2026-10-11):** experimental, with **Dropbox OAuth, a PDF download/open, and an EPUB download/open manually confirmed on Linux Mint / KOReader Flatpak**. **Kindle Oasis manual tests have confirmed synchronization, PDF/EPUB reading through Atelier, and offline reopening of locally cached attachments** (prior to the optional documents-folder migration). Keep backups; personal Zotero library only; no Zotero Groups or Dropbox annotation upload. See the [Portuguese setup and offline-use guide](guia-kindle-dropbox-pt-BR.md) and [test record](manual-test-results.md).
 
 ## Goal
 
@@ -40,7 +40,9 @@ The feature is **download-and-cache**, not streaming. For an attachment of a sup
 <KOReader data directory>/zotero/storage/<ZOTERO_ATTACHMENT_KEY>/<FILENAME>
 ```
 
-The Zotero browser first tries `API.tryResolveLocalAttachment`, which checks local files and the cache, **before** entering its network-only fallback. A successfully downloaded, current local file should reopen without Wi-Fi. The downloaded file is retained on storage until deleted/cleaned or otherwise invalidated; no automatic deletion has been added by this integration. If file version checks reject the cache or the file is missing, a new download may be necessary. **Actual offline reopen on the Kindle is still a test to complete.**
+On a **Kindle Oasis** using `/mnt/us/koreader/zotero`, the experimental branch now uses **`/mnt/us/documents/Zotero/storage/<ZOTERO_ATTACHMENT_KEY>/<FILENAME>`** for new attachments so that KOReader's recursive `documents` cover browser can show them. The original path is preserved for **Flatpak/Linux**. The Kindle-only path selection uses an explicit check for `/mnt/us/koreader/zotero`, and falls back to the legacy path if the normal Kindle `/documents` folder is unavailable. The Kindle upgrade script `tools/mover_storage_para_documents_kindle.sh` moves existing attachment folders and their .sdr sidecars between directories on the same USB filesystem, without moving the database/credentials. Old paths remain search roots until the migration is completed. The new Kindle path **has not yet been validated on the device**.
+
+The Zotero browser first tries `API.tryResolveLocalAttachment`, which checks local files and the cache, **before** entering its network-only fallback. A successfully downloaded, current local file should reopen without Wi-Fi. The downloaded file is retained on storage until deleted/cleaned or otherwise invalidated; no automatic deletion has been added by this integration. If file version checks reject the cache or the file is missing, a new download may be necessary. **Offline reopening has been manually confirmed on the Kindle with the prior storage path; revalidation after moving to documents remains pending.**
 
 Important distinctions:
 
