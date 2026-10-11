@@ -9,6 +9,7 @@ local SQ3 = require("lua-ljsqlite3/init")
 local logger = require("logger")
 local Annotations = require("annotations")
 local DropboxBridge = require("zotero_dropbox")
+local FileValidation = require("zotero_file_validation")
 local Device = require("device")
 local _ = require("gettext")
 -- For my annotation routines:
@@ -1132,6 +1133,9 @@ function API.isSupportedAttachmentLinkMode(linkMode)
 end
 
 local function isCachedAttachmentCurrent(targetPath, item)
+    -- Reject locally cached HTTP error bodies and truncated files.
+    local valid = FileValidation.isValid(targetPath, item)
+    if not valid then return false end
     local file_ts = lfs.attributes(targetPath, "modification")
     if not file_ts then
         return false
@@ -1174,7 +1178,7 @@ function API.resolveAttachmentPath(item)
             local ext_dir = API.getExternalStorageDir()
             if ext_dir ~= "" and item.data.filename then
                 local ext_path = API.normalizePath(BaseUtil.joinPath(ext_dir, item.key, item.data.filename))
-                if file_exists(ext_path) then
+                if FileValidation.isValid(ext_path, item) then
                     if isCachedAttachmentCurrent(ext_path, item) or allow_stale then
                         logger.dbg("Zotero: resolved external storage at " .. ext_path)
                         return ext_path
@@ -1191,7 +1195,7 @@ function API.resolveAttachmentPath(item)
             end
         end
         local _, targetPath = API.getDirAndPath(item)
-        if targetPath and file_exists(targetPath) then
+        if targetPath and FileValidation.isValid(targetPath, item) then
             if isCachedAttachmentCurrent(targetPath, item) or allow_stale then
                 logger.dbg("Zotero: resolved plugin storage at " .. targetPath)
                 return targetPath
@@ -1200,7 +1204,7 @@ function API.resolveAttachmentPath(item)
         -- basename search fallback
         if item.data.filename then
             local found = API.findAttachmentByBasename(item.data.filename)
-            if found then
+            if found and FileValidation.isValid(found, item) then
                 logger.dbg("Zotero: resolved imported file by basename at " .. found)
                 return found
             end
@@ -2367,8 +2371,9 @@ function API.downloadAndGetPath(key, download_callback)
     local downloadRequired = true
 
     local targetDir, targetPath = API.getDirAndPath(item)
-    local file_ts = lfs.attributes(targetPath, "modification")
-    if file_ts then -- file already exists locally
+    local existing_valid = FileValidation.isValid(targetPath, item)
+    local file_ts = existing_valid and lfs.attributes(targetPath, "modification")
+    if file_ts then -- a valid file already exists locally
         -- get local file version from doc settings file
         local docSettings = DocSettings:open(targetPath)
         local libVersionAtLastSync = docSettings:readSetting("zoteroLibVersion", 0)
@@ -2409,19 +2414,68 @@ function API.downloadAndGetPath(key, download_callback)
             local url = API.userLibraryURL .. "/items/" .. key .. "/file"
             logger.dbg("Zotero: fetching " .. url)
 
-            local r, c, h = https.request({
-                url = url,
-                headers = API.zoteroHeader,
-                sink = ltn12.sink.file(io.open(targetPath, "wb")),
-            })
-
-            errormsg = API.verifyResponse(r, c)
+            -- Always download to a temporary file. Zotero Storage may
+            -- return a short text error body such as "Not Found"; writing
+            -- directly to targetPath would poison local offline reopening.
+            local tmp_path = targetPath .. ".zotero-part"
+            local out, open_error = io.open(tmp_path, "wb")
+            if not out then
+                errormsg = "Cannot create Zotero temporary download: " .. tostring(open_error)
+            else
+                local ok_request, r, c = pcall(https.request, {
+                    url = url,
+                    headers = API.zoteroHeader,
+                    sink = ltn12.sink.file(out),
+                })
+                pcall(function() out:close() end)
+                if not ok_request then
+                    errormsg = "Zotero file download failed during HTTPS request"
+                else
+                    errormsg = API.verifyResponse(r, c)
+                end
+                if not errormsg then
+                    local valid, reason = FileValidation.isValid(tmp_path, item)
+                    if not valid then
+                        errormsg = "Zotero Storage supplied an invalid attachment: " .. tostring(reason)
+                    end
+                end
+                if not errormsg then
+                    -- Save an invalid previous file rather than silently
+                    -- destroying the evidence. Preserve .sdr reading data.
+                    local backup
+                    if lfs.attributes(targetPath, "mode") == "file"
+                       and not FileValidation.isValid(targetPath, item) then
+                        backup = targetPath .. ".invalid-backup"
+                        local n = 1
+                        while lfs.attributes(backup) and n < 100 do
+                            backup = targetPath .. ".invalid-backup-" .. tostring(n)
+                            n = n + 1
+                        end
+                        if lfs.attributes(backup) then
+                            errormsg = "Too many invalid attachment backups"
+                        else
+                            local moved, move_error = os.rename(targetPath, backup)
+                            if not moved then
+                                errormsg = "Cannot save invalid attachment backup: " .. tostring(move_error)
+                            end
+                        end
+                    end
+                    if not errormsg then
+                        local replaced, replace_error = os.rename(tmp_path, targetPath)
+                        if not replaced then
+                            if backup then os.rename(backup, targetPath) end
+                            errormsg = "Cannot publish validated Zotero download: " .. tostring(replace_error)
+                        end
+                    end
+                end
+                if errormsg then os.remove(tmp_path) end
+            end
         end
         if errormsg then
             if file_ts then
-                logger.warn("Zotero: Failed to download updated attachtment version. Using local copy!")
+                logger.warn("Zotero: failed to update attachment. Keeping valid local file.")
             else
-                logger.warn("Zotero: Failed to download attachtment")
+                logger.warn("Zotero: download failed, no valid local attachment available")
                 return nil, errormsg
             end
         end
