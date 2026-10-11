@@ -65,6 +65,14 @@ New branch code now:
 
 **Implementation only: not yet installed or validated on the physical Kindle.** A separate backup-enabled hotfix installer `tools/corrigir_download_pdf_kindle.sh` updates `zoteroapi.lua`, `zotero_dropbox.lua` and the new `zotero_file_validation.lua` without touching any downloaded documents. The nine-byte corrupt copy must be recovered separately, preferably from the known-good local Dropbox sync, and the PDF reopened on Kindle.
 
+## Kindle recovered PDF after defensive-download hotfix (2026-10-11)
+
+The user executed the safe local recovery procedure for Carrey et al. (attachment key `86T2GIJT`), preserving the previous nine-byte false PDF and copying the valid Dropbox-synced original onto the Kindle. The Kindle copy was reported by `file` as **PDF 1.7, 16 pages**, with the **same SHA-256** as the original: `3b90ff38a2b00f95f84f0ded1ae8ed30c5ee6cad85d27fd403b85ab25d330c3b`.
+
+The user then ran `tools/corrigir_download_pdf_kindle.sh`: it successfully copied and verified `zotero_file_validation.lua`, `zotero_dropbox.lua`, and `zoteroapi.lua`, backing up prior versions. **The user confirmed Carrey's PDF now opens on Kindle Oasis.** A Lua compiler was not available for local static syntax checking at installation time. Successful opening is a smoke test of loading and locally opening the existing correct document, **not** yet a test that a new network download rejects a malformed response.
+
+**Open questions:** cover-mosaic thumbnail missing after replacing the earlier bogus PDF (KOReader maintains its own cached book info/cover, separate from Zotero Atelier's metadata rescans); the function and provenance of an unexpected `documents/KOReader.sh` have not yet been verified on that device. The user's Zotero Atelier `Re-scan storage for local items` reported 12 attachments; this is an application catalog count and is not a measured count of only recently downloaded PDFs/EPUBs.
+
 ## Not yet established
 
 - Broader Kindle compatibility, performance, large-library behavior, and repeatability beyond the successful Oasis smoke test
