@@ -51,6 +51,19 @@ curl -fL https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/featur
 
 **Verification of this new layout on a physical Kindle is still pending.** The original Kindle offline tests passed with the previous layout; moving reading files changes their absolute paths, so recently-opened-book shortcuts may require reopening from the new directory. A reported KOReader navigation freeze/hard reset has not yet been diagnosed; changing the file location is a usability improvement, **not a proven crash fix**.
 
+### Repairing Kindle with split Zotero storage after initial migration
+
+If the old `/mnt/us/koreader/zotero/storage` and new `/mnt/us/documents/Zotero/storage` **both contain attachments**, do not rerun the original one-time migration script and do not delete the old folder. An observed Kindle test showed three PDFs/EPUBs (14 MB) in the new storage and one (616 KiB) still under the old storage path. The installed plugin still used an exact Zotero data directory comparison, which is now replaced in the repository by KOReader's `Device:isKindle()` detection.
+
+With KOReader fully closed and USB mounted, run the [no-overwrite split-storage repair](tools/corrigir_storage_duplo_kindle.sh). It backs up the previous API module and SQLite database; aborts before touching files if attachment key directories collide; installs only `zoteroapi.lua`; moves unmatched entire Zotero attachment key folders (including `.sdr`) without merging/overwriting; and leaves Dropbox credentials and Flatpak unchanged. **The repair is published but has not yet passed a device test.**
+
+```bash
+curl -fL https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/feature/dropbox-on-demand/tools/corrigir_storage_duplo_kindle.sh \
+  -o ~/Downloads/corrigir_storage_duplo_kindle.sh \
+  && bash ~/Downloads/corrigir_storage_duplo_kindle.sh
+```
+
+
 ## Disk usage and opt-in deletion of Zotero downloads (experimental)
 
 A new **Zotero Atelier → Maintenance → Zotero storage and cleanup** dialog shows the device's total/available space and the size/count of **locally cached Zotero PDF/EPUB attachments**, broken down by the current download folder and a separate legacy folder if present. All selection checkboxes begin **unchecked**. The user must select a category, press **Delete selected downloads**, then accept a second confirmation. Actual disk reclamation is estimated from individual file sizes (filesystem allocation may differ).
