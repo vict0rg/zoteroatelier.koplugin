@@ -12,24 +12,25 @@ Keep Zotero personal-library metadata synchronized through the Zotero API, while
 
 It expects a Dropbox path of the form `/YOUR/REMOTE/STORAGE/<ZOTERO_ATTACHMENT_KEY>/<FILENAME>`. The attachment key is **not** the parent bibliographic item's key. A successful Zotero metadata synchronization does not establish whether the Dropbox path exists.
 
-## Configure Dropbox
+## Configure Dropbox directly inside Zotero Atelier
 
-1. Create a Dropbox developer app via <https://www.dropbox.com/developers/apps>. For an existing Dropbox tree, select **Scoped access → Full Dropbox** and request **only** `files.content.read`. This grants access to read files throughout the Dropbox account (even though this plugin never uploads), so use a dedicated revocable app and consider the security implications.
-2. Obtain an OAuth **offline refresh token** using PKCE (for public/native applications, without embedding any app secret). The helper `tools/configurar_dropbox_oauth.py` prompts for your app key and remote root, opens Dropbox authorization, and stores the refresh token locally.
-3. The helper creates `<KOReader data directory>/zotero/dropbox_atelier.lua` as a local secret (permissions 0600):
+**Only one KOReader plugin is required.** In the experimental version, open:
 
-```lua
-return {
-    enabled = true,
-    app_key = "YOUR_DROPBOX_APP_KEY",
-    refresh_token = "YOUR_REFRESH_TOKEN",
-    storage_root = "/YOUR/DROPBOX/PATH/TO/storage",
-}
-```
+`Zotero Atelier → Settings → Configure Dropbox account`
 
-**Never commit that configuration, the Zotero `meta.lua`, or any secrets.** On Linux Mint Flatpak the default KOReader data directory is `~/.var/app/rocks.koreader.KOReader/config/koreader`. On Kindle it is `koreader` on the device. Both are separate and need separately secured settings.
+1. Visit <https://www.dropbox.com/developers/apps> in a normal browser and create a **Scoped access / Full Dropbox** developer app. Under Permissions select **files.content.read only**. You do **not** need to install the KOReader cloud-storage Dropbox plugin.
+2. In **Dropbox app and storage folder**, enter the Dropbox **App key** (never the App secret), plus the cloud folder that contains Zotero's attachment-key folders, e.g. `/Research/Zotero/storage` — this is a path **inside Dropbox**, not `~/Dropbox/...` on Linux.
+3. Choose **Authorize Dropbox (QR code)** in the same Zotero Atelier menu. Scan the QR code using your phone, or use a browser capable of opening the generated authorization URL.
+4. Sign in to Dropbox, approve the *read-only* permission, and copy the authorization code that Dropbox displays.
+5. Back in KOReader, choose **Enter Dropbox authorization code**, paste or type the code and tap **Connect**. The plugin exchanges it using OAuth PKCE (**S256**) and stores a renewable token locally.
+6. Confirm **Dropbox connection status** displays “Authorization saved: yes” and “On-demand downloads: enabled”. Then test by opening **one** previously unavailable Zotero PDF/EPUB.
 
-Refresh tokens are stored **on the device**, not in this repository, and the module only calls Dropbox token refresh and `/2/files/download`. Dropbox itself documents OAuth/PKCE at <https://developers.dropbox.com/oauth-guide>.
+No Dropbox API keys, refresh tokens, or authorization codes should ever be included in screenshots, chat messages or GitHub commits. The generated authorization QR code is temporary. A different device (e.g. Kindle) must be configured separately or receive its protected credential file through a carefully controlled manual transfer.
+
+Dropbox official OAuth documentation: <https://docs.dropboxapi.com/dropbox-api/docs/oauth>.
+
+The first-stage standalone `tools/configurar_dropbox_oauth.py` helper is **optional**, retained for developers; it is no longer required for end users.
+
 
 ## Safety
 
