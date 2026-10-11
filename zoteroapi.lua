@@ -1609,13 +1609,13 @@ function API.fetchCollectionPaginated(collection_url, headers, callback)
         end
         library_version = header["last-modified-version"]
 
-        local percentage = 100 * item_nr / collection_size
-        if collection_size == 0 then
-            percentage = 100
-        end
+        -- The progress number describes successfully received entries,
+        -- not merely the offset requested from Zotero.
+        local processed = math.min(item_nr + #result, collection_size)
+        local percentage = collection_size == 0 and 100 or 100 * processed / collection_size
 
         if callback then
-            callback(result, percentage)
+            callback(result, percentage, processed, collection_size)
         else
             -- add items to the list we return in the end
             table.move(result, 1, #result, #items + 1, items)
@@ -1765,8 +1765,7 @@ function API.fetchZoteroItems(since, progress_callback)
 
     local annotationTypes = Annotations.supportedZoteroTypes()
 
-    local r, e = API.fetchCollectionPaginated(items_url, headers, function(partial_entries, percentage)
-        callback(string.format("Syncing items %.0f%%", percentage))
+    local r, e = API.fetchCollectionPaginated(items_url, headers, function(partial_entries, percentage, processed, total)
         for i = 1, #partial_entries do
             -- Ruthlessly update our local items
             local item = partial_entries[i]
@@ -1818,6 +1817,9 @@ function API.fetchZoteroItems(since, progress_callback)
                 end
             end
         end
+        -- Report *after* processing the page. The old 0% message appeared
+        -- before any page was committed, which was confusing on slow Kindles.
+        callback(string.format("Items: %d/%d (%.0f%%)", processed, total, percentage))
     end)
 
     -- next is used to check whether table has entries.
@@ -1877,8 +1879,7 @@ function API.fetchZoteroCollections(since, progress_callback)
     local nestedCollections = {}
     local nCnt = 0
 
-    local r, e = API.fetchCollectionPaginated(collections_url, headers, function(partial_entries, percentage)
-        callback(string.format("Syncing collections %.0f%%", percentage))
+    local r, e = API.fetchCollectionPaginated(collections_url, headers, function(partial_entries, percentage, processed, total)
         for i = 1, #partial_entries do
             -- Ruthlessly update our local items
             local collection = partial_entries[i].data
@@ -1917,6 +1918,7 @@ function API.fetchZoteroCollections(since, progress_callback)
                 end
             end
         end
+        callback(string.format("Collections: %d/%d (%.0f%%)", processed, total, percentage))
     end)
     stmt_update_collection:close()
 
@@ -1954,6 +1956,7 @@ function API.syncAllItems(progress_callback)
     local since = API.getUserLibraryVersion()
     --logger.info("Local Zotero lib version: "..since)
 
+    callback("Step 1/4: verifying Zotero API access...")
     -- verify access
     local e = API.verifyZoteroAccess()
     if e ~= nil then
@@ -1991,19 +1994,28 @@ function API.syncAllItems(progress_callback)
 	end
 	--]]
 
-    local r, e = API.fetchZoteroCollections(since, progress_callback)
+    callback("Step 2/4: requesting Zotero collections...")
+    local r, e = API.fetchZoteroCollections(since, function(status)
+        callback("Step 2/4: " .. status)
+    end)
     if e ~= nil then
         return e
     end
 
-    e = API.fetchZoteroItems(since, callback)
+    callback("Step 3/4: requesting Zotero items...")
+    e = API.fetchZoteroItems(since, function(status)
+        callback("Step 3/4: " .. status)
+    end)
     if e ~= nil then
         return e
     end
 
     API.setUserLibraryVersion(r)
 
-    local download_fails, failed_downloads = API.batchDownload(callback)
+    callback("Step 4/4: checking offline collection downloads...")
+    local download_fails, failed_downloads = API.batchDownload(function(status)
+        callback("Step 4/4: " .. status)
+    end)
     sync_stats.file_download_fails = download_fails or 0
     sync_stats.failed_downloads = failed_downloads or {}
 
@@ -2416,6 +2428,9 @@ function API.batchDownload(progress_callback)
     local result, item_count = stmt:reset():resultset()
 
     logger.info("Zotero:", item_count, "offline items to download")
+    if item_count == 0 then
+        progress_callback("No attachments queued for offline collections (0/0).")
+    end
 
     -- Track download failures
     local download_fails = 0
@@ -2424,8 +2439,12 @@ function API.batchDownload(progress_callback)
     for i = 1, item_count do
         local download_key = result[1][i]
         local filename = result[2][i]
-        progress_callback(string.format(_("Downloading attachment %i/%i"), i, item_count))
+        progress_callback(string.format("Downloading attachment %d/%d (%.0f%% complete before this file)",
+            i, item_count, 100 * (i - 1) / item_count))
         local path, e = API.downloadAndGetPath(download_key, nil)
+        if e == nil then
+            progress_callback(string.format("Attachments: %d/%d (%.0f%%)", i, item_count, 100 * i / item_count))
+        end
 
         if e ~= nil then
             progress_callback(string.format(_("Error downloading attachment %s: %s"), filename, e))
