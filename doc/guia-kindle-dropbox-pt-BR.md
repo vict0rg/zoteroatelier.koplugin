@@ -223,6 +223,26 @@ curl -fL https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/featur
 
 Essa funcionalidade permanecerá desativada até a análise do log e testes práticos de correção no Oasis.
 
+### Correção identificada para o fechamento do gerenciador de espaço
+
+O `crash.log` enviado mostrou exatamente:
+
+```text
+zotero_storage_manager.lua:131: attempt to call local '_' (a number value)
+```
+
+Na função `freeSpace()`, um retorno numérico da consulta de espaço `util.df` foi armazenado em `_`, sobrescrevendo temporariamente a função `gettext` usada para exibir textos traduzidos. O código agora usa uma variável nomeada `free_bytes` e envolve a abertura da janela com captura de exceções.
+
+A primeira correção **reativa somente o relatório**, não a exclusão: os tamanhos e contagens podem ser inspecionados, mas o botão de apagar arquivos permanece bloqueado por `SAFE_READ_ONLY = true`. Isso permite testar a interface no Kindle sem risco de exclusão. Para instalar com backup e KOReader completamente fechado:
+
+```bash
+curl -fL https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/feature/dropbox-on-demand/tools/testar_relatorio_espaco_kindle.sh \
+  -o ~/Downloads/testar_relatorio_espaco_kindle.sh \
+  && bash ~/Downloads/testar_relatorio_espaco_kindle.sh
+```
+
+Se ainda apresentar erro, interrompa o teste e use o instalador `tools/desativar_limpeza_kindle.sh` para voltar à entrada de menu desativada (revisão fixa). **A correção ainda não foi validada no Kindle; não reative a limpeza permanente antes da validação.**
+
 ## 8. Dúvidas frequentes
 
 **Os PDFs e EPUBs somem quando desligo o Wi-Fi?**  
