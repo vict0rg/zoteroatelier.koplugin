@@ -19,7 +19,7 @@ Enable a **Kindle running KOReader after a compatible jailbreak** to browse a pe
 
 ## First Linux Mint Flatpak smoke test
 
-The experimental branch provides a [backed-up Flatpak installer with rollback](tools/testar_flatpak.sh). It updates **four** plugin code files, leaves existing Zotero metadata and API keys untouched, and does not enable Dropbox until explicitly configured. The initial Linux desktop smoke tests have succeeded; **Kindle Oasis browsing and document opening have now passed initial manual tests; offline and broader compatibility tests remain**.
+The experimental branch provides a [backed-up Flatpak installer with rollback](tools/testar_flatpak.sh). It updates **four** plugin code files, leaves existing Zotero metadata and API keys untouched, and does not enable Dropbox until explicitly configured. The initial Linux desktop smoke tests have succeeded; **Kindle Oasis browsing, document opening and offline reopening have passed initial manual tests; broader compatibility tests remain**.
 
 ## Dropbox on-demand: getting started and offline use
 
@@ -36,6 +36,20 @@ The experimental branch provides a [backed-up Flatpak installer with rollback](t
 **Optional:** Zotero Atelier supports marking collections with **Download this collection during sync**, which requests batch downloads during a future synchronization; it consumes device space and requires internet. The Dropbox fallback participates in that download routine for supported imported attachments. Test on a small collection first.
 
 **Scope and safety:** Dropbox access is read-only (`files.content.read`); neither the PDFs nor EPUBs are uploaded back to Dropbox. The feature currently expects Zotero `imported_file`/`imported_url` entries stored as `storage/ATTACHMENT_KEY/FILENAME`; it does not resolve arbitrary `linked_file` attachments. Do not share `meta.lua` or `dropbox_atelier.lua`: they contain credentials. Disable **Write highlights into PDF files** during initial testing, and do not assume annotation syncing works offline.
+
+## Kindle Oasis: show Zotero books in the documents cover mosaic (experimental)
+
+**Optional Kindle-only layout introduced after the initial tests:** new downloads go to `/mnt/us/documents/Zotero/storage/<ATTACHMENT_KEY>/<FILENAME>` so KOReader's file browser can show the EPUB/PDF covers when recursive subfolder viewing is enabled. The personal Zotero SQLite database, settings, OAuth tokens and synchronization diagnostics remain in `/mnt/us/koreader/zotero/`. **Flatpak/Linux desktop still uses the previous `<data directory>/zotero/storage/` layout.**
+
+To update an already working Kindle, **fully exit KOReader**, connect it to Linux by USB, then use the [safe Kindle documents migration script](tools/mover_storage_para_documents_kindle.sh). It backs up the previous `zoteroapi.lua` and SQLite files, moves the entire old storage directory into `documents/Zotero/storage` on the same Kindle filesystem (including sidecars), and installs the updated code. It aborts without merging if the old and new storage directories both already exist. No PDF or EPUB file is sent to GitHub.
+
+```bash
+curl -fL https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/feature/dropbox-on-demand/tools/mover_storage_para_documents_kindle.sh \
+  -o ~/Downloads/mover_storage_para_documents_kindle.sh \
+  && bash ~/Downloads/mover_storage_para_documents_kindle.sh
+```
+
+**Verification of this new layout on a physical Kindle is still pending.** The original Kindle offline tests passed with the previous layout; moving reading files changes their absolute paths, so recently-opened-book shortcuts may require reopening from the new directory. A reported KOReader navigation freeze/hard reset has not yet been diagnosed; changing the file location is a usability improvement, **not a proven crash fix**.
 
 ## Original Zotero Atelier documentation
 
