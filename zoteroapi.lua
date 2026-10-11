@@ -579,12 +579,37 @@ function API.init(zotero_dir)
     local settings_path = BaseUtil.joinPath(API.zotero_dir, "meta.lua")
     API.settings = LuaSettings:open(settings_path)
 
-    API.storage_dir = BaseUtil.joinPath(API.zotero_dir, "storage")
+    -- Keep the Zotero metadata database and credentials in the KOReader
+    -- data directory, but put downloaded books under Kindle /documents.
+    -- This makes PDF/EPUB attachments visible to KOReader's recursive cover
+    -- browser, without relocating the SQLite database or Dropbox tokens.
+    -- Only the physical Kindle /mnt/us layout is affected; desktop/Flatpak
+    -- continues to use the original data-dir/zotero/storage.
+    API.legacy_storage_dir = BaseUtil.joinPath(API.zotero_dir, "storage")
+    API.storage_dir = API.legacy_storage_dir
+    if API.zotero_dir == "/mnt/us/koreader/zotero" then
+        local documents_dir = "/mnt/us/documents"
+        if lfs.attributes(documents_dir, "mode") == "directory" then
+            local zotero_documents_dir = BaseUtil.joinPath(documents_dir, "Zotero")
+            if lfs.attributes(zotero_documents_dir, "mode") ~= "directory" then
+                local ok, err = lfs.mkdir(zotero_documents_dir)
+                if not ok then
+                    logger.warn("Zotero: cannot create Kindle documents folder: " .. tostring(err))
+                end
+            end
+            if lfs.attributes(zotero_documents_dir, "mode") == "directory" then
+                API.storage_dir = BaseUtil.joinPath(zotero_documents_dir, "storage")
+            end
+        end
+    end
     if not file_exists(API.storage_dir) then
-        lfs.mkdir(API.storage_dir)
+        local ok, err = lfs.mkdir(API.storage_dir)
+        if not ok then
+            error("Zotero: cannot create attachment storage directory: " .. tostring(err))
+        end
     end
 
-    logger.dbg("Zotero: storage dir" .. API.storage_dir)
+    logger.info("Zotero: attachment storage directory: " .. API.storage_dir)
 
     API.db_path = BaseUtil.joinPath(API.zotero_dir, "zotero.db")
     logger.info("Zotero: opening db path ", API.db_path)
@@ -903,6 +928,9 @@ function API.collectSearchRoots()
         add(r)
     end
     add(API.storage_dir)
+    if API.legacy_storage_dir and API.legacy_storage_dir ~= API.storage_dir then
+        add(API.legacy_storage_dir)
+    end
     return roots
 end
 
@@ -3121,6 +3149,15 @@ end
 
 function API.scanStorage()
     local zotItems, extraDirs = API.scanStorageDir(API.storage_dir, false)
+    if API.legacy_storage_dir and API.legacy_storage_dir ~= API.storage_dir then
+        -- Legacy cached books remain discoverable if the USB migration has
+        -- not yet been run (or if it was intentionally skipped).
+        local oldItems, oldExtra = API.scanStorageDir(API.legacy_storage_dir, true)
+        zotItems = zotItems + oldItems
+        for _, d in ipairs(oldExtra) do
+            table.insert(extraDirs, d)
+        end
+    end
     if API.getExternalStorageEnabled() then
         local ext_dir = API.getExternalStorageDir()
         if ext_dir ~= "" then
