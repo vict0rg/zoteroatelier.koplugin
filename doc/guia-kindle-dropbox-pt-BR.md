@@ -209,6 +209,20 @@ curl -fL https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/featur
 
 Executar **somente com o KOReader fechado e Kindle montado por USB**. Esse script atualiza `zoteroapi.lua`, `zotero_dropbox.lua` e `zotero_file_validation.lua`, mantendo os downloads, arquivos `.sdr`, banco Zotero e credenciais existentes. **Não repara automaticamente um PDF já corrompido.** Para esse, faça backup dos poucos bytes inválidos e copie ou baixe novamente o PDF correto. A recuperação e o código ainda aguardam validação prática no Kindle.
 
+### Aviso: janela experimental de limpeza desativada temporariamente
+
+Após instalar o gerenciador de espaço, um teste real no Kindle causou o fechamento inesperado do KOReader ao tocar em **Maintenance → Zotero storage and cleanup**. A causa ainda depende da leitura do `crash.log`, portanto **não há confirmação de que a funcionalidade esteja pronta para uso**. Abrir a janela de relatório não executa o fluxo separado de exclusão confirmado.
+
+A branch foi atualizada para substituir essa opção por uma mensagem informativa, sem abrir a janela que causou o travamento. Para instalar **somente a desativação protetiva** sem tocar nos PDFs/EPUBs, banco Zotero, credenciais e anotações, feche o KOReader, conecte o Kindle por USB e execute:
+
+```bash
+curl -fL https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/feature/dropbox-on-demand/tools/desativar_limpeza_kindle.sh \
+  -o ~/Downloads/desativar_limpeza_kindle.sh \
+  && bash ~/Downloads/desativar_limpeza_kindle.sh
+```
+
+Essa funcionalidade permanecerá desativada até a análise do log e testes práticos de correção no Oasis.
+
 ## 8. Dúvidas frequentes
 
 **Os PDFs e EPUBs somem quando desligo o Wi-Fi?**  
