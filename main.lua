@@ -14,6 +14,7 @@ local Menu = require("ui/widget/menu")
 local Geom = require("ui/geometry")
 local _ = require("gettext")
 local ZoteroAPI = require("zoteroapi")
+local DropboxBridge = require("zotero_dropbox")
 local itemInfoViewer = require("zoteroiteminfo")
 local AnnotationPanel = require("annotation_panel")
 local AnnotationSearch = require("annotation_search")
@@ -587,6 +588,52 @@ function Plugin:getZoteroSubMenu()
                             self:setAccount()
                         end,
                     },
+
+                    {
+                        text = _("Configure Dropbox account"),
+                        sub_item_table = {
+                            {
+                                text = _("Dropbox app and storage folder"),
+                                callback = function()
+                                    self:setDropboxAccount()
+                                end,
+                            },
+                            {
+                                text = _("Authorize Dropbox (QR code)"),
+                                callback = function()
+                                    self:showDropboxAuthorization()
+                                end,
+                            },
+                            {
+                                text = _("Enter Dropbox authorization code"),
+                                callback = function()
+                                    self:finishDropboxAuthorization()
+                                end,
+                            },
+                            {
+                                text = _("Enable Dropbox downloads"),
+                                checked_func = function()
+                                    return DropboxBridge.getStatus().enabled
+                                end,
+                                callback = function()
+                                    local status = DropboxBridge.getStatus()
+                                    local ok, err = DropboxBridge.setEnabled(not status.enabled)
+                                    if not ok then
+                                        UIManager:show(InfoMessage:new({
+                                            text = err or _("Cannot change Dropbox setting."),
+                                            icon = "notice-warning",
+                                        }))
+                                    end
+                                end,
+                            },
+                            {
+                                text = _("Dropbox connection status"),
+                                callback = function()
+                                    self:showDropboxStatus()
+                                end,
+                            },
+                        },
+                    },
                     {
                         text = _("Enable WebDAV storage"),
                         checked_func = function()
@@ -932,6 +979,132 @@ function Plugin:setWebdavAccount()
     })
     UIManager:show(self.webdav_account_dialog)
     self.webdav_account_dialog:onShowKeyboard()
+end
+
+
+-- Dropbox is integrated into Zotero Atelier: no second KOReader plugin needed.
+-- Only metadata (App key and Dropbox storage root) are editable in this dialog.
+-- The refresh token is acquired through PKCE and never shown on screen.
+function Plugin:setDropboxAccount()
+    local cfg = DropboxBridge.getStatus()
+    local dialog
+    dialog = MultiInputDialog:new({
+        title = _("Configure Dropbox account"),
+        fields = {
+            {text = cfg.app_key, hint = _("Dropbox developer App key")},
+            {text = cfg.storage_root, hint = _("Dropbox remote storage folder (/.../storage)")},
+        },
+        buttons = {
+            {
+                {
+                    text = _("Cancel"),
+                    id = "close",
+                    callback = function()
+                        dialog:onClose()
+                        UIManager:close(dialog)
+                    end,
+                },
+                {
+                    text = _("Save"),
+                    callback = function()
+                        local fields = dialog:getFields()
+                        local ok, err = DropboxBridge.saveAccount(fields[1], fields[2])
+                        if not ok then
+                            UIManager:show(InfoMessage:new({
+                                text = err or _("Could not save Dropbox configuration."),
+                                icon = "notice-warning",
+                            }))
+                            return
+                        end
+                        dialog:onClose()
+                        UIManager:close(dialog)
+                        UIManager:show(InfoMessage:new({
+                            text = _("Dropbox path saved. Next: Authorize Dropbox (QR code)."),
+                        }))
+                    end,
+                },
+            },
+        },
+    })
+    UIManager:show(dialog)
+    dialog:onShowKeyboard()
+end
+
+function Plugin:showDropboxAuthorization()
+    local url, err = DropboxBridge.startAuthorization()
+    if not url then
+        UIManager:show(InfoMessage:new({
+            text = err or _("Configure Dropbox account first."),
+            icon = "notice-warning",
+        }))
+        return
+    end
+    local QRMessage = require("ui/widget/qrmessage")
+    local side = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.86)
+    UIManager:show(QRMessage:new({
+        text = url,
+        width = side,
+        height = side,
+        dismiss_callback = function()
+            UIManager:show(InfoMessage:new({
+                text = _("After approving Dropbox in your browser, return to Zotero Atelier > Settings > Configure Dropbox account > Enter Dropbox authorization code."),
+            }))
+        end,
+    }))
+end
+
+function Plugin:finishDropboxAuthorization()
+    local dialog
+    dialog = InputDialog:new({
+        title = _("Enter Dropbox authorization code"),
+        input = "",
+        input_hint = _("Code displayed after approving Dropbox"),
+        buttons = {
+            {
+                {
+                    text = _("Cancel"),
+                    callback = function()
+                        UIManager:close(dialog)
+                    end,
+                },
+                {
+                    text = _("Connect"),
+                    is_enter_default = true,
+                    callback = function()
+                        local code = dialog:getInputText()
+                        if not code or code == "" then return end
+                        UIManager:close(dialog)
+                        NetworkMgr:runWhenOnline(function()
+                            local ok, err = DropboxBridge.finishAuthorization(code)
+                            if ok then
+                                UIManager:show(InfoMessage:new({
+                                    text = _("Dropbox authorization saved. On-demand downloads are enabled."),
+                                    icon = "notice-info",
+                                }))
+                            else
+                                UIManager:show(InfoMessage:new({
+                                    text = err or _("Dropbox authorization failed."),
+                                    icon = "notice-warning",
+                                }))
+                            end
+                        end)
+                    end,
+                },
+            },
+        },
+    })
+    UIManager:show(dialog)
+    dialog:onShowKeyboard()
+end
+
+function Plugin:showDropboxStatus()
+    local status = DropboxBridge.getStatus()
+    local text = _("Dropbox App key: ") .. (status.app_key ~= "" and _("configured") or _("missing"))
+        .. "\n" .. _("Remote folder: ") .. (status.storage_root ~= "" and status.storage_root or _("not set"))
+        .. "\n" .. _("Authorization saved: ") .. (status.authorized and _("yes") or _("no"))
+        .. "\n" .. _("On-demand downloads: ") .. (status.enabled and _("enabled") or _("disabled"))
+        .. "\n\n" .. _("Authorization status is local; open one Zotero attachment to test the Dropbox connection.")
+    UIManager:show(InfoMessage:new({text = text}))
 end
 
 function Plugin:chooseDirectory(setting_key, title, on_path_chosen)
