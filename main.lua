@@ -1450,7 +1450,7 @@ function Plugin:onZoteroSyncAction()
         if self.zotero_sync_in_progress then return end
         self.zotero_sync_in_progress = true
 
-        local dialog, previous_status
+        local dialog, previous_status, last_safe_status
         local status_file = DataStorage:getDataDir() .. "/zotero/sync_status.txt"
         local function saveStatus(message)
             -- No credentials, Dropbox paths, document titles or HTTP headers.
@@ -1466,10 +1466,11 @@ function Plugin:onZoteroSyncAction()
             previous_status = message
             -- Keep filenames and server error details out of the diagnostic file.
             if message:find("Error downloading attachment", 1, true) then
-                saveStatus("Step 4/4: an attachment download failed (see KOReader log)")
+                last_safe_status = "Step 4/4: attachment download failed"
             else
-                saveStatus(message)
+                last_safe_status = message
             end
+            saveStatus(last_safe_status)
 
             if dialog then
                 UIManager:close(dialog)
@@ -1500,7 +1501,7 @@ function Plugin:onZoteroSyncAction()
         if not ok then
             logger.err("Zotero synchronization failed: ", result)
             final_message = _("Zotero synchronization failed. Check the KOReader log.")
-            saveStatus("FAILED (see KOReader log)")
+            saveStatus("FAILED after: " .. (last_safe_status or "unknown step") .. " (see KOReader log)")
         elseif result ~= nil then
             final_message = _("Zotero synchronization finished with warnings:") .. "\n" .. tostring(result)
             saveStatus("FINISHED WITH WARNINGS")
