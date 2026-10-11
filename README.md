@@ -64,6 +64,12 @@ curl -fL https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/featur
 ```
 
 
+### Kindle storage report: diagnosed crash and protected read-only retest (2026-10-11)
+
+The Kindle crash on **Maintenance → Zotero storage and cleanup** was traced precisely to `zotero_storage_manager.lua:131: attempt to call local '_' (a number value)`. In `freeSpace()`, `local ok, total, _, available = pcall(util.df, ...)` shadowed the gettext translator named `_`. Renamed the ignored numeric return to `free_bytes` and added an `xpcall` wrapper around report opening. The replacement UI is now **read-only** with `SAFE_READ_ONLY = true`; its delete button cannot remove any file. This protective version is published but **requires on-Kindle retesting**.
+
+To test safely with KOReader fully closed and Kindle connected by USB, run [`tools/testar_relatorio_espaco_kindle.sh`](tools/testar_relatorio_espaco_kindle.sh), which backs up and updates only `main.lua` and `zotero_storage_manager.lua`, preserving all PDFs, EPUBs, .sdr, SQLite, Dropbox tokens, and the previously working PDF download fix. The emergency [`tools/desativar_limpeza_kindle.sh`](tools/desativar_limpeza_kindle.sh) pins the earlier disabled-menu revision for rollback if needed.
+
 ### Notice: experimental storage cleanup temporarily disabled on Kindle
 
 A Kindle test reported KOReader closing when the user entered the **Maintenance → Zotero storage and cleanup** screen. The exact exception is still under investigation. To avoid further crashes, the branch currently **disables this menu action** and shows an informational message; ordinary browsing, syncing, Dropbox downloads and reading remain enabled. The feature's backend module remains in the branch but should not be invoked on Kindle before a diagnosis.
