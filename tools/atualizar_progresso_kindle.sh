@@ -48,8 +48,17 @@ fi
 
 mkdir -p "$BACKUP"
 for name in "${FILES[@]}"; do cp -p "$PLUGIN/$name" "$BACKUP/$name"; done
+# The current SQLite DB may contain evidence of a partially initialized sync.
+# Preserve it before trying the fixed bootstrap; do not touch credentials.
+ZOTERO_DIR="$MOUNT/koreader/zotero"
+for name in zotero.db zotero.db-wal zotero.db-shm; do
+    if [[ -f "$ZOTERO_DIR/$name" ]]; then
+        cp -p "$ZOTERO_DIR/$name" "$BACKUP/$name" ||
+            die "Não foi possível guardar o backup do banco: $name"
+    fi
+done
 
-echo "Backup salvo em: $BACKUP"
+echo "Backup do código e do banco atual salvo em: $BACKUP"
 for name in "${FILES[@]}"; do
     cp "$WORK/$name" "$PLUGIN/$name" || die "Erro durante a cópia de $name. Backup disponível em $BACKUP"
     cmp -s "$WORK/$name" "$PLUGIN/$name" || die "Verificação falhou em $name"
