@@ -1431,23 +1431,83 @@ function Plugin:onZoteroBrowserAction()
     self.browser:displayCollection(nil)
 end
 
+-- Synchronization is a linear, network-bound job. A standard Trapper:info()
+-- popup can be dismissed with a tap, making the initial sync look finished
+-- while the local library is still empty. Keep a non-dismissible status visible
+-- until the job finishes, and persist its latest *non-secret* phase for diagnosis.
 function Plugin:onZoteroSyncAction()
     if not self:checkInitialized() then
         return
     end
+    if self.zotero_sync_in_progress then
+        UIManager:show(InfoMessage:new({
+            text = _("Zotero synchronization is still running. Please wait."),
+            timeout = 5,
+        }))
+        return
+    end
     NetworkMgr:runWhenOnline(function()
-        Trapper:wrap(function()
-            Trapper:info("Synchronizing Zotero library.")
-            local e = ZoteroAPI.syncAllItems(function(msg)
-                Trapper:info(msg)
-            end)
+        if self.zotero_sync_in_progress then return end
+        self.zotero_sync_in_progress = true
 
-            if e == nil then
-                Trapper:info("Success")
-            else
-                Trapper:info(e)
+        local dialog, previous_status
+        local status_file = DataStorage:getDataDir() .. "/zotero/sync_status.txt"
+        local function saveStatus(message)
+            -- No credentials, Dropbox paths, document titles or HTTP headers.
+            local file = io.open(status_file, "wb")
+            if file then
+                file:write(os.date("!%Y-%m-%dT%H:%M:%SZ"), "\n", message, "\n")
+                file:close()
             end
-        end)
+        end
+        local function progress(message)
+            message = tostring(message or _("Working..."))
+            if message == previous_status then return end
+            previous_status = message
+            saveStatus(message)
+
+            if dialog then
+                UIManager:close(dialog)
+            end
+            dialog = InfoMessage:new({
+                text = _("Zotero synchronization in progress") .. "\n\n" .. message
+                    .. "\n\n" .. _("Please wait; the library will be available when synchronization finishes."),
+                icon = "notice-info",
+                -- Tapping the progress message must not hide it and leave the
+                -- user looking at an incomplete/empty Zotero browser.
+                dismissable = false,
+            })
+            UIManager:show(dialog)
+            UIManager:forceRePaint()
+        end
+
+        local ok, result = xpcall(function()
+            progress(_("Preparing Zotero library..."))
+            return ZoteroAPI.syncAllItems(progress)
+        end, debug.traceback)
+
+        if dialog then
+            UIManager:close(dialog)
+        end
+        self.zotero_sync_in_progress = false
+
+        local final_message
+        if not ok then
+            logger.err("Zotero synchronization failed: ", result)
+            final_message = _("Zotero synchronization failed. Check the KOReader log.")
+            saveStatus("FAILED (see KOReader log)")
+        elseif result ~= nil then
+            final_message = _("Zotero synchronization finished with warnings:") .. "\n" .. tostring(result)
+            saveStatus("FINISHED WITH WARNINGS")
+        else
+            final_message = _("Zotero synchronization completed. You can now browse the library.")
+            saveStatus("COMPLETED")
+        end
+        UIManager:show(InfoMessage:new({
+            text = final_message,
+            icon = (ok and result == nil) and "notice-info" or "notice-warning",
+            timeout = 12,
+        }))
     end)
 end
 
