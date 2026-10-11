@@ -1530,13 +1530,20 @@ function API.checkZoteroKey(page_url, headers)
             local sql = "SELECT userID FROM libraries WHERE libraryID=1;"
             local uID = db:rowexec(sql)
             if uID == 0 then
-                -- userID has not been set yet. Should only happed for first ever sync...
-                sql = ('UPDATE libraries SET userID=%i, name="%s", editable=%i WHERE libraryID=1;'):format(
-                    result.userID,
-                    result.username,
-                    0
+                -- First synchronization: store the username as a bound SQL
+                -- string value. Double quotes in SQLite name="username" can
+                -- be interpreted as an identifier, raising "no such column"
+                -- on a newly initialized Kindle database.
+                local zotero_user_id = tonumber(result.userID)
+                local zotero_username = result.username
+                if not zotero_user_id or type(zotero_username) ~= "string" then
+                    return nil, "Zotero API returned invalid account information"
+                end
+                local stmt = db:prepare(
+                    "UPDATE libraries SET userID = ?, name = ?, editable = ? WHERE libraryID = 1;"
                 )
-                db:rowexec(sql)
+                stmt:reset():bind(zotero_user_id, zotero_username, 0):step()
+                stmt:close()
             else
                 -- should check that it is still the same user library and that we have sufficient access...
             end
