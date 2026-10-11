@@ -33,3 +33,4 @@ jobs:
           bash -n tools/atualizar_progresso_kindle.sh
           bash -n tools/mover_storage_para_documents_kindle.sh
           bash -n tools/instalar_gerenciador_espaco_kindle.sh
+          bash -n tools/corrigir_storage_duplo_kindle.sh
