@@ -280,10 +280,33 @@ function M.finishAuthorization(code)
         source = ltn12.source.string(payload),
         sink = ltn12.sink.table(chunks),
     })
+    -- Dropbox normally returns an OAuth error code in its JSON response.
+    -- Never show or log the authorization code, refresh token, or full server
+    -- response: users may share screenshots while troubleshooting.
+    local response_json = table.concat(chunks)
+    local json_ok, response = pcall(json.decode, response_json)
     if not call_ok or result ~= 1 or tonumber(status) ~= 200 then
-        return nil, "Dropbox authorization failed (HTTP " .. tostring(status) .. ")."
+        local reason
+        if json_ok and type(response) == "table" then
+            reason = response.error
+            if type(reason) == "table" then
+                reason = reason[".tag"] or reason.error
+            end
+        end
+        if reason == "invalid_grant" then
+            return nil, "Dropbox rejected the code (invalid_grant). It may be mistyped, expired, already used, or not match the QR code. Generate a new QR code and retry."
+        elseif reason == "invalid_client" then
+            return nil, "Dropbox rejected the App key (invalid_client). Check the Dropbox App key and restart authorization."
+        elseif reason == "invalid_request" then
+            return nil, "Dropbox rejected the OAuth request (invalid_request). Check the app's PKCE/public-client settings."
+        elseif reason == "invalid_scope" then
+            return nil, "Dropbox rejected the app permission (invalid_scope). Check files.content.read in Dropbox App Console."
+        else
+            return nil, "Dropbox authorization failed (HTTP " .. tostring(status)
+                .. (type(reason) == "string" and reason:match("^[%w_-]+$")
+                    and ", " .. reason or "") .. ")."
+        end
     end
-    local json_ok, response = pcall(json.decode, table.concat(chunks))
     if not json_ok or type(response) ~= "table"
        or type(response.refresh_token) ~= "string" or response.refresh_token == "" then
         return nil, "Dropbox did not return an offline refresh token."
