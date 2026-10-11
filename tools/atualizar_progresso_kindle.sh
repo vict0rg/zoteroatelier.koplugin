@@ -8,12 +8,12 @@ MOUNT="${KINDLE_MOUNT:-/media/$USER/Kindle}"
 PLUGIN="$MOUNT/koreader/plugins/zoteroatelier.koplugin"
 BASE="https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/feature/dropbox-on-demand"
 BACKUP="$HOME/Downloads/BACKUP-ATELIER-PROGRESSO-KINDLE-$(date +%Y%m%d-%H%M%S)"
-FILES=(main.lua zoteroapi.lua zotero_storage_manager.lua)
+FILES=(main.lua zoteroapi.lua zotero_dropbox.lua zotero_file_validation.lua zotero_storage_manager.lua)
 
 die() { printf '\nERRO: %s\n' "$*" >&2; exit 1; }
 
 echo "Feche completamente o KOReader no Kindle antes de continuar."
-echo "Este procedimento atualiza SOMENTE os arquivos do plugin (main.lua, zoteroapi.lua e gerenciador de espaço); não apaga a biblioteca."
+echo "Este procedimento atualiza cinco arquivos de código do plugin, com validacao PDF/EPUB; nao apaga a biblioteca."
 [[ -d "$PLUGIN" && -f "$PLUGIN/_meta.lua" ]] || die "Pasta do Zotero Atelier não encontrada: $PLUGIN"
 
 # Verify that the target is a removable/non-root mount, not a stray directory.
@@ -29,7 +29,7 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 echo
-echo "Baixando três arquivos do plugin..."
+echo "Baixando cinco arquivos do plugin..."
 for name in "${FILES[@]}"; do
     curl -fLsS --retry 2 --connect-timeout 15 --max-time 90 \
         "$BASE/$name" -o "$WORK/$name" || die "Falhou download de $name, Kindle inalterado."
