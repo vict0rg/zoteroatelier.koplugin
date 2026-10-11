@@ -15,6 +15,7 @@ local Geom = require("ui/geometry")
 local _ = require("gettext")
 local ZoteroAPI = require("zoteroapi")
 local DropboxBridge = require("zotero_dropbox")
+local StorageManager = require("zotero_storage_manager")
 local itemInfoViewer = require("zoteroiteminfo")
 local AnnotationPanel = require("annotation_panel")
 local AnnotationSearch = require("annotation_search")
@@ -565,6 +566,12 @@ function Plugin:getZoteroSubMenu()
                         text = _("Re-scan storage for local items"),
                         callback = function()
                             self:onZoteroRescanAction()
+                        end,
+                    },
+                    {
+                        text = _("Zotero storage and cleanup"),
+                        callback = function()
+                            StorageManager.show(self)
                         end,
                     },
                     {
