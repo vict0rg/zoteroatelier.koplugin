@@ -162,6 +162,22 @@ Com o KOReader **fechado** e o Kindle conectado por USB, execute novamente o scr
 
 **Resultado em 11/10/2026: confirmado pelo usuário.** Depois da atualização, o Kindle Oasis sincronizou e abriu um artigo e um livro EPUB. A reabertura offline foi posteriormente confirmada; persistem a verificação independente da origem exata dos arquivos no Dropbox e testes de robustez de sincronizações futuras.
 
+## 7.1. Visualizar espaço livre e selecionar downloads para exclusão
+
+O fork agora inclui **Zotero Atelier → Maintenance → Zotero storage and cleanup**, com leitura do espaço disponível no aparelho pela função `ffi/util.df` do próprio KOReader. Mostra os PDFs/EPUBs que correspondem exatamente a referências de anexos importados e existem na pasta atual de download do Zotero; quando o caminho antigo também existir, ele aparece **separadamente**.
+
+A interface possui seleções no formato `[ ]`, **todas inicialmente desmarcadas**, um botão de exclusão e uma **segunda confirmação** informando o número de arquivos e espaço estimado a recuperar. A limpeza remove apenas os PDFs/EPUBs dessas pastas que constam do banco de metadados do Zotero; **não apaga** o próprio `zotero.db`, as credenciais Zotero/Dropbox, arquivos `.sdr` (posição de leitura e preferências), outros documentos do Kindle nem `koreader/cache/cr3cache`, que é compartilhado pelo leitor.
+
+Esta funcionalidade é experimental, ainda sem teste prático no Kindle. **Não a instale antes de esclarecer a localização da pasta `storage` e o congelamento do navegador relatado anteriormente.** Quando for apropriado, com KOReader fechado e Kindle conectado por USB, o instalador com backup é:
+
+```bash
+curl -fL https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/feature/dropbox-on-demand/tools/instalar_gerenciador_espaco_kindle.sh \
+  -o ~/Downloads/instalar_gerenciador_espaco_kindle.sh \
+  && bash ~/Downloads/instalar_gerenciador_espaco_kindle.sh
+```
+
+Ele atualiza só o código da interface (`main.lua` e `zotero_storage_manager.lua`) e **não executa nenhuma exclusão**. Após instalá-lo, a exclusão ocorre exclusivamente quando selecionada e confirmada dentro do KOReader. Depois de remover um anexo, ele poderá ser recuperado pela integração Dropbox, quando houver conexão com a internet.
+
 ## 8. Dúvidas frequentes
 
 **Os PDFs e EPUBs somem quando desligo o Wi-Fi?**  
