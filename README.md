@@ -19,7 +19,7 @@ Enable a **Kindle running KOReader after a compatible jailbreak** to browse a pe
 
 ## First Linux Mint Flatpak smoke test
 
-The experimental branch provides a [backed-up Flatpak installer with rollback](tools/testar_flatpak.sh). It updates **four** plugin code files, leaves existing Zotero metadata and API keys untouched, and does not enable Dropbox until explicitly configured. The initial Linux desktop smoke tests have succeeded; **Kindle Oasis browsing, document opening and offline reopening have passed initial manual tests; broader compatibility tests remain**.
+The experimental branch provides a [backed-up Flatpak installer with rollback](tools/testar_flatpak.sh). It updates **six** plugin code files, leaves existing Zotero metadata and API keys untouched, and does not enable Dropbox until explicitly configured. The initial Linux desktop smoke tests have succeeded; **Kindle Oasis browsing, document opening and offline reopening have passed initial manual tests; broader compatibility tests remain**.
 
 ## Dropbox on-demand: getting started and offline use
 
@@ -78,7 +78,7 @@ curl -fL https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/featur
   && bash ~/Downloads/instalar_gerenciador_espaco_kindle.sh
 ```
 
-The general Kindle update script now includes all three necessary code files (`main.lua`, `zoteroapi.lua`, and `zotero_storage_manager.lua`) to prevent missing-module errors.
+The general Kindle update script now includes all five necessary code files (`main.lua`, `zoteroapi.lua`, `zotero_dropbox.lua`, `zotero_file_validation.lua`, and `zotero_storage_manager.lua`) to prevent missing-module errors.
 
 ## Fixing a bogus nine-byte PDF on Kindle (experimental repair)
 
