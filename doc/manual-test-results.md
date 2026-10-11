@@ -32,9 +32,9 @@ After applying the repair and retrying **Synchronize**, the tester reported that
 | Independently verify Dropbox download source for each Kindle attachment | **NOT YET INDEPENDENTLY VERIFIED** |
 | Reopen already downloaded files with Kindle Wi-Fi disabled | **PASS — user confirmed local `storage` cache and offline opening** |
 
-**Additional user confirmation (2026-10-11):** files were present in the Kindle's local `storage` directory and opened normally with Wi-Fi disabled. This confirms offline reading of the locally cached attachments. 
+**Additional user confirmation (2026-10-11):** downloaded attachments were present in the Kindle's local `koreader/zotero/storage/<ATTACHMENT_KEY>/` directory and opened normally with Wi-Fi disabled. The EPUB itself is stored there. KOReader also created an independent derived `.cr3` reading/rendering cache under `koreader/cache/cr3cache/`; that cache is **not** the original EPUB and is not the authoritative attachment store. This confirms offline reading of locally stored Zotero attachments.
 
-This is a significant *manual* Kindle compatibility result, not evidence of universal compatibility or a production release. The tester did not separately confirm the article's precise file format, whether these specific Kindle documents were initially absent from local storage, whether these specific Kindle documents were initially absent from local storage; **offline reopening is now confirmed**.
+This is a significant *manual* Kindle compatibility result, not evidence of universal compatibility or a production release. The tester did not separately confirm the article's precise file format, whether the specific Kindle documents were initially absent from local storage, or the network source of each individual file download.
 
 ## Not yet established
 
