@@ -5,7 +5,9 @@ set -Eeuo pipefail
 umask 077
 MOUNT="${KINDLE_MOUNT:-/media/$USER/Kindle}"
 PLUGIN="$MOUNT/koreader/plugins/zoteroatelier.koplugin"
-BASE="https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/feature/dropbox-on-demand"
+# Pin the emergency fallback to the known disabled-menu commit.
+# Do not follow branch HEAD, where the read-only report is re-enabled.
+BASE="https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/9704e485874b723c8e800e659d1af9b48e654ae8"
 BACKUP="$HOME/Downloads/BACKUP-ZOTERO-DESATIVAR-LIMPEZA-KINDLE-$(date +%Y%m%d-%H%M%S)"
 die() { printf '\nERRO: %s\n' "$*" >&2; exit 1; }
 
