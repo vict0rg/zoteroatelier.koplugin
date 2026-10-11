@@ -30,15 +30,16 @@ After applying the repair and retrying **Synchronize**, the tester reported that
 | Browse and open an article via Zotero Atelier on Kindle | **PASS — user confirmed** |
 | Open an EPUB book via Zotero Atelier on Kindle | **PASS — user confirmed** |
 | Independently verify Dropbox download source for each Kindle attachment | **NOT YET INDEPENDENTLY VERIFIED** |
-| Reopen downloaded files with Kindle Wi-Fi disabled | **NOT YET TESTED** |
+| Reopen already downloaded files with Kindle Wi-Fi disabled | **PASS — user confirmed local `storage` cache and offline opening** |
 
-This is a significant *manual* Kindle compatibility result, not evidence of universal compatibility or a production release. The tester did not separately confirm the article's precise file format, whether these specific Kindle documents were initially absent from local storage, or whether they can be reopened offline.
+**Additional user confirmation (2026-10-11):** files were present in the Kindle's local `storage` directory and opened normally with Wi-Fi disabled. This confirms offline reading of the locally cached attachments. 
+
+This is a significant *manual* Kindle compatibility result, not evidence of universal compatibility or a production release. The tester did not separately confirm the article's precise file format, whether these specific Kindle documents were initially absent from local storage, whether these specific Kindle documents were initially absent from local storage; **offline reopening is now confirmed**.
 
 ## Not yet established
 
 - Broader Kindle compatibility, performance, large-library behavior, and repeatability beyond the successful Oasis smoke test
 - Android compatibility
-- Offline reopen after first download
 - Behavior with missing files, special characters, network interruptions, and revoked OAuth tokens
 - Annotation behavior and long-term synchronization integrity
 - Automated functional tests and broader compatibility
