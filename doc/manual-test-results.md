@@ -73,6 +73,12 @@ The user then ran `tools/corrigir_download_pdf_kindle.sh`: it successfully copie
 
 **Open questions:** cover-mosaic thumbnail missing after replacing the earlier bogus PDF (KOReader maintains its own cached book info/cover, separate from Zotero Atelier's metadata rescans); the function and provenance of an unexpected `documents/KOReader.sh` have not yet been verified on that device. The user's Zotero Atelier `Re-scan storage for local items` reported 12 attachments; this is an application catalog count and is not a measured count of only recently downloaded PDFs/EPUBs.
 
+## Proven contents of bogus PDF; Kindle launcher identification (2026-10-11)
+
+Follow-up USB diagnostics inspected a preserved backup of the nine-byte file previously named `Carrey et al. ...pdf`. Its **exact ASCII content was `Not found`** (nine bytes), which confirms that a textual not-found response had been persisted with a `.pdf` extension. It does not by itself prove which HTTP endpoint, which service, or the exact HTTP status produced that text. The defensive PDF/EPUB header validation and temporary-file download safeguards were published and copied to the user's Kindle. The good original PDF was restored, SHA-256 matched, and the user reported successful opening.
+
+A newly noticed `/mnt/us/documents/KOReader.sh` was inspected without executing it. The file is a 120,147-byte POSIX shell script with the header `# Name: KOReader`, `# Author: KOReader team`, an embedded Base64 PNG icon, `# DontUseFBInk`, and launch line `/var/local/kmc/bin/kpm launch koreader --asap`. This is a KPM-based launcher and should **not** be treated as a disposable Zotero cache file. The source of its modification timestamp on 2026-10-11 at 20:31 local time was not established.
+
 ## Not yet established
 
 - Broader Kindle compatibility, performance, large-library behavior, and repeatability beyond the successful Oasis smoke test
