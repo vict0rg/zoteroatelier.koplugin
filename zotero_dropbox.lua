@@ -103,7 +103,7 @@ function M.tryDownload(item, dest_dir, dest_path)
 
     local path, path_error = remote_path(cfg, item)
     if not path then return nil, true, path_error end
-    if lfs.attributes(dest_path, "mode") == "file" then
+    if lfs.attributes(dest_path, "mode") == "file" and (lfs.attributes(dest_path, "size") or 0) > 0 then
         return dest_path, true, nil
     end
 
@@ -120,11 +120,12 @@ function M.tryDownload(item, dest_dir, dest_path)
     local out = io.open(part, "wb")
     if not out then return nil, true, "Cannot create cache temporary file" end
     local request_ok, success, code = pcall(https.request, {
-        url = DOWNLOAD_ENDPOINT,
-        method = "GET", -- Dropbox /2/files/download requires GET (not POST).
+        -- The documented `arg` query parameter keeps Unicode filenames out of
+        -- HTTP headers (Dropbox requires ASCII-only JSON inside Dropbox-API-Arg).
+        url = DOWNLOAD_ENDPOINT .. "?arg=" .. urlencode(json.encode({path = path})),
+        method = "GET", -- Dropbox /2/files/download supports GET.
         headers = {
             ["Authorization"] = "Bearer " .. token,
-            ["Dropbox-API-Arg"] = json.encode({path = path}),
         },
         sink = ltn12.sink.file(out),
     })
