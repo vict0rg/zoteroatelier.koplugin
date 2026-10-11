@@ -70,7 +70,40 @@ O Zotero Atelier original tem a opção **Download this collection during sync**
 
 Isso **não baixa automaticamente a biblioteca inteira**. A opção é por coleção e os arquivos ocuparão espaço no dispositivo. **O download em lote com Dropbox ainda não foi validado no Kindle:** teste inicialmente com uma coleção pequena, confirme cada documento e só então desligue a rede.
 
-## 7. Dúvidas frequentes
+## 7. Indicador de progresso da sincronização (atualização experimental)
+
+A branch experimental passou a mostrar um aviso **persistente, que não desaparece ao toque**, durante **Synchronize**. O aviso identifica quatro etapas:
+
+1. **Step 1/4:** verificar a chave e o acesso à API Zotero.
+2. **Step 2/4:** buscar coleções, com contagem real `X/Y` e porcentagem daquela etapa.
+3. **Step 3/4:** buscar referências/itens, com contagem real `X/Y` e porcentagem daquela etapa.
+4. **Step 4/4:** conferir e, se necessário, baixar os anexos das coleções marcadas para uso offline, com `X/Y` e porcentagem dos arquivos.
+
+As porcentagens referem-se **à etapa atual**, não são estimativas do tempo total. Ainda não há medição contínua de **KB/s** nem uma indicação independente de atividade durante uma única requisição HTTPS longa. A tela pode ficar momentaneamente estática enquanto espera a rede; não interprete isso como conclusão nem como prova de que travou.
+
+O último estado da sincronização é gravado em um pequeno arquivo de texto **sem credenciais**:
+
+```text
+<dados do KOReader>/zotero/sync_status.txt
+```
+
+No Kindle da instalação de teste, esse arquivo pode ser acessado pelo USB em `/media/usuario/Kindle/koreader/zotero/sync_status.txt`. Se a tela ficar parada por muito tempo, o arquivo ajuda a identificar a etapa em que o processo permaneceu. Ele **não comprova que a transferência está ativa**: registra apenas a última etapa atingida.
+
+### Como atualizar apenas o indicador no Kindle
+
+**Somente após encerrar o KOReader no Kindle** e conectá-lo ao Linux Mint por USB, execute:
+
+```bash
+curl -fL https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/feature/dropbox-on-demand/tools/atualizar_progresso_kindle.sh \
+  -o ~/Downloads/atualizar_progresso_kindle.sh \
+  && bash ~/Downloads/atualizar_progresso_kindle.sh
+```
+
+O script salva backup dos dois arquivos anteriores e atualiza **somente `main.lua` e `zoteroapi.lua`**, preservando credenciais, banco de dados, anexos e anotações. **Não desmonte o Kindle durante uma sincronização ou enquanto o KOReader estiver utilizando os arquivos.**
+
+Esta interface nova **ainda precisa de validação prática no Kindle Oasis**. Não altere uma instalação funcional durante um processo de sincronização em andamento.
+
+## 8. Dúvidas frequentes
 
 **Os PDFs e EPUBs somem quando desligo o Wi-Fi?**  
 Não por desligar o Wi-Fi: um download concluído corresponde a um arquivo gravado no aparelho, não a um streaming. A reabertura offline no Kindle ainda precisa ser confirmada experimentalmente.
