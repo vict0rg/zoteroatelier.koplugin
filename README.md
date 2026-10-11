@@ -51,6 +51,22 @@ curl -fL https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/featur
 
 **Verification of this new layout on a physical Kindle is still pending.** The original Kindle offline tests passed with the previous layout; moving reading files changes their absolute paths, so recently-opened-book shortcuts may require reopening from the new directory. A reported KOReader navigation freeze/hard reset has not yet been diagnosed; changing the file location is a usability improvement, **not a proven crash fix**.
 
+## Disk usage and opt-in deletion of Zotero downloads (experimental)
+
+A new **Zotero Atelier → Maintenance → Zotero storage and cleanup** dialog shows the device's total/available space and the size/count of **locally cached Zotero PDF/EPUB attachments**, broken down by the current download folder and a separate legacy folder if present. All selection checkboxes begin **unchecked**. The user must select a category, press **Delete selected downloads**, then accept a second confirmation. Actual disk reclamation is estimated from individual file sizes (filesystem allocation may differ).
+
+Only files that **exactly match imported Zotero attachment metadata** and are located under the plugin's own download roots are eligible. No recursive `rm -rf` is used, and SQLite references, Zotero/Dropbox credentials, `.sdr` reading settings, and the global KOReader `cr3cache` are never deleted. Files may be retrieved from Dropbox again when online.
+
+For the Kindle, fully exit KOReader and use the [backup-enabled storage panel installer](tools/instalar_gerenciador_espaco_kindle.sh), which updates `main.lua` and installs `zotero_storage_manager.lua` without touching any documents. **This dialog is implemented but not yet validated on a physical Kindle; do not install it solely to troubleshoot the previously reported navigation freeze.**
+
+```bash
+curl -fL https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/feature/dropbox-on-demand/tools/instalar_gerenciador_espaco_kindle.sh \
+  -o ~/Downloads/instalar_gerenciador_espaco_kindle.sh \
+  && bash ~/Downloads/instalar_gerenciador_espaco_kindle.sh
+```
+
+The general Kindle update script now includes all three necessary code files (`main.lua`, `zoteroapi.lua`, and `zotero_storage_manager.lua`) to prevent missing-module errors.
+
 ## Original Zotero Atelier documentation
 
 This fork preserves the upstream Zotero Atelier functionality and attribution. See also the [original project](https://github.com/Atelier-Recherche/zoteroatelier.koplugin), the [English reference documentation](README.en.md), and the [preserved French documentation](README.fr.md).
