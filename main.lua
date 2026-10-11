@@ -591,6 +591,9 @@ function Plugin:getZoteroSubMenu()
 
                     {
                         text = _("Configure Dropbox account"),
+                        callback = function()
+                            return nil
+                        end,
                         sub_item_table = {
                             {
                                 text = _("Dropbox app and storage folder"),
