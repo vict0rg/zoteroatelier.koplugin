@@ -15,7 +15,11 @@ Enable a **Kindle running KOReader after a compatible jailbreak** to browse a pe
 
 **Jailbreak prerequisites:** this project does **not** jailbreak Kindles. Availability depends on the precise Kindle model and firmware. Consult the [KindleModding jailbreak guide](https://kindlemodding.org/jailbreaking/index.html) and the [KOReader official Kindle installation guide](https://github.com/koreader/koreader/wiki/Installation-on-Kindle-devices). Always verify compatibility before changing Kindle firmware or installing a jailbreak.
 
-**Testing / implementation:** see [Dropbox development notes](doc/dropbox-on-demand.md) in the feature branch. The original Zotero Atelier remains credited and its GPL-3.0 license is preserved. This fork's initial proposal and testing are by [@vict0rg](https://github.com/vict0rg), assisted by OpenAI ChatGPT (GPT-6); the [KOReader Dropbox provider](https://github.com/koreader/koreader/blob/master/plugins/cloudstorage.koplugin/providers/dropbox.lua) (KOReader contributors, AGPL-3.0) was used as an architectural reference, without copying its source code.
+**Testing / implementation:** see [Dropbox development notes](https://github.com/vict0rg/zoteroatelier.koplugin/blob/feature/dropbox-on-demand/doc/dropbox-on-demand.md) in the feature branch. The original Zotero Atelier remains credited and its GPL-3.0 license is preserved. This fork's initial proposal and testing are by [@vict0rg](https://github.com/vict0rg), assisted by OpenAI ChatGPT (GPT-6); the [KOReader Dropbox provider](https://github.com/koreader/koreader/blob/master/plugins/cloudstorage.koplugin/providers/dropbox.lua) (KOReader contributors, AGPL-3.0) was used as an architectural reference, without copying its source code.
+
+## First Linux Mint Flatpak smoke test
+
+The experimental branch provides a [backed-up Flatpak installer with rollback](https://github.com/vict0rg/zoteroatelier.koplugin/blob/feature/dropbox-on-demand/tools/testar_flatpak.sh). It installs only three code files, leaves Zotero metadata and API keys untouched, and does not enable Dropbox until explicitly configured. Do not install on Kindle until the desktop test succeeds.
 
 ## Original Zotero Atelier documentation
 
