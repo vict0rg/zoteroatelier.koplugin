@@ -8,7 +8,7 @@ DATA_DIR="$HOME/.var/app/$APP_ID/config/koreader"
 PLUGIN_DIR="$DATA_DIR/plugins/zoteroatelier.koplugin"
 BACKUP_ROOT="$HOME/Downloads/BACKUP-ZOTERO-ATELIER-DROPBOX"
 BASE="https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/feature/dropbox-on-demand"
-FILES=(annotation_panel.lua zoteroapi.lua zotero_dropbox.lua main.lua)
+FILES=(annotation_panel.lua zoteroapi.lua zotero_dropbox.lua zotero_file_validation.lua zotero_storage_manager.lua main.lua)
 MODE="${1:-install}"
 
 fail() { printf '\nERRO: %s\n' "$*" >&2; exit 1; }
@@ -47,7 +47,7 @@ case "$MODE" in
         chmod 700 "$BACKUP_ROOT"
         WORK="$(mktemp -d)"
         trap 'rm -rf "$WORK"' EXIT
-        say "Baixando os 4 arquivos da branch experimental (incluindo o menu Dropbox)"
+        say "Baixando os 6 arquivos da branch experimental (incluindo validacao PDF/EPUB)"
         for name in "${FILES[@]}"; do
             curl -fLsS --retry 2 --connect-timeout 15 --max-time 90 \
                 -o "$WORK/$name" "$BASE/$name" || fail "Falha ao baixar $name; plugin preservado."
