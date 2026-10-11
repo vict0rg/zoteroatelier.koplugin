@@ -11,7 +11,7 @@ Enable a **Kindle running KOReader after a compatible jailbreak** to browse a pe
 - **KOReader:** display downloaded documents on a jailbroken Kindle. The same experimental feature can first be tested on KOReader for desktop Linux (including Flatpak).
 - **Scope:** the personal Zotero library only. Group libraries and bidirectional Dropbox annotation uploads are **not** part of this experiment.
 
-**Development status:** the Dropbox integration is a proof of concept on the [`feature/dropbox-on-demand` branch](https://github.com/vict0rg/zoteroatelier.koplugin/tree/feature/dropbox-on-demand). It is **not yet verified on a real Dropbox account or Kindle**, and must not be treated as production-ready.
+**Development status (11 October 2026):** experimental feature on [`feature/dropbox-on-demand`](https://github.com/vict0rg/zoteroatelier.koplugin/tree/feature/dropbox-on-demand). Dropbox OAuth authorization, opening a personal Zotero PDF, and opening a personal Zotero EPUB have **passed manual tests on Linux Mint / KOReader Flatpak**. The plugin has also been copied to a Kindle Oasis, but opening attachments and offline reopening **have not yet been confirmed on the Kindle**. This is not a production release; see [manual test results](doc/manual-test-results.md).
 
 **Jailbreak prerequisites:** this project does **not** jailbreak Kindles. Availability depends on the precise Kindle model and firmware. Consult the [KindleModding jailbreak guide](https://kindlemodding.org/jailbreaking/index.html) and the [KOReader official Kindle installation guide](https://github.com/koreader/koreader/wiki/Installation-on-Kindle-devices). Always verify compatibility before changing Kindle firmware or installing a jailbreak.
 
@@ -19,7 +19,21 @@ Enable a **Kindle running KOReader after a compatible jailbreak** to browse a pe
 
 ## First Linux Mint Flatpak smoke test
 
-The experimental branch provides a [backed-up Flatpak installer with rollback](https://github.com/vict0rg/zoteroatelier.koplugin/blob/feature/dropbox-on-demand/tools/testar_flatpak.sh). It installs only three code files, leaves Zotero metadata and API keys untouched, and does not enable Dropbox until explicitly configured. Do not install on Kindle until the desktop test succeeds.
+The experimental branch provides a [backed-up Flatpak installer with rollback](tools/testar_flatpak.sh). It updates **four** plugin code files, leaves existing Zotero metadata and API keys untouched, and does not enable Dropbox until explicitly configured. The initial Linux desktop smoke tests have succeeded; **Kindle compatibility is still being tested**.
+
+## Dropbox on-demand: getting started and offline use
+
+**Read first:** [Step-by-step guide in Portuguese (Linux Mint + Kindle Oasis)](doc/guia-kindle-dropbox-pt-BR.md) · [Technical notes and OAuth setup](doc/dropbox-on-demand.md) · [Manual test results](doc/manual-test-results.md).
+
+1. **Install** the `feature/dropbox-on-demand` version of Zotero Atelier and restart KOReader. For Linux Mint Flatpak, use [the backup-enabled test installer](tools/testar_flatpak.sh); on Kindle, copy the entire `zoteroatelier.koplugin` directory (including `zotero_dropbox.lua`) to the actual KOReader plugin directory.
+2. **Configure Zotero** with your personal user ID and API key, then run **Zotero Atelier → Synchronize** on *each* device. The metadata/collections database is local to each device; transferring credential files alone does not copy the previously synchronized database.
+3. **Configure Dropbox** under **Zotero Atelier → Settings → Configure Dropbox account**, specifying the Dropbox App key and the **remote** Zotero storage root (for example `/Research/Zotero/storage`, never a Linux `/home/...` directory). Authorize with the built-in QR code and one-time code; verify `Authorization saved: yes` and `On-demand downloads: enabled`.
+4. **Open an attachment** from a Zotero reference while connected to Wi-Fi. If it is not already present on the device, the plugin downloads **only the selected PDF or EPUB** from Dropbox to `<KOReader data directory>/zotero/storage/<ATTACHMENT_KEY>/<FILENAME>`. It does **not** stream the document from Dropbox.
+5. **Reopen offline:** the normal attachment-opening path checks for the locally cached file *before* requesting internet access. A completed download remains on the device until the user deletes the file/cache or the storage is otherwise cleared. Offline reopening on **Kindle Oasis is still unverified**: test it by opening a document once online, disabling Wi-Fi and reopening it from Zotero Atelier. The downloaded file can also be located with KOReader's file browser. Newly requested files and metadata/annotation synchronization still require connectivity.
+
+**Optional:** Zotero Atelier supports marking collections with **Download this collection during sync**, which requests batch downloads during a future synchronization; it consumes device space and requires internet. The Dropbox fallback participates in that download routine for supported imported attachments. Test on a small collection first.
+
+**Scope and safety:** Dropbox access is read-only (`files.content.read`); neither the PDFs nor EPUBs are uploaded back to Dropbox. The feature currently expects Zotero `imported_file`/`imported_url` entries stored as `storage/ATTACHMENT_KEY/FILENAME`; it does not resolve arbitrary `linked_file` attachments. Do not share `meta.lua` or `dropbox_atelier.lua`: they contain credentials. Disable **Write highlights into PDF files** during initial testing, and do not assume annotation syncing works offline.
 
 ## Original Zotero Atelier documentation
 
