@@ -8,7 +8,7 @@ umask 077
 
 MOUNT="${KINDLE_MOUNT:-/media/$USER/Kindle}"
 PLUGIN="$MOUNT/koreader/plugins/zoteroatelier.koplugin"
-BASE="https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/31421b263b531e70c159a49a53ffc1805a0224e0"
+BASE="https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/621f5a387c4e6689be8a9459ebed3e9192503e20"
 BACKUP="$HOME/Downloads/BACKUP-ZOTERO-EXCLUSAO-INDIVIDUAL-KINDLE-$(date +%Y%m%d-%H%M%S)"
 FILES=(zotero_storage_manager.lua main.lua)
 
