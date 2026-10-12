@@ -114,6 +114,21 @@ The top of the screen still said **Free disk space not available**. The module q
 
 The single-file backup-enabled installer `tools/corrigir_espaco_livre_kindle.sh` pins the known commit and updates only `zotero_storage_manager.lua`. No documents, DB, .sdr, main menu or credentials are changed. **Do not enable deletion yet**; disk report still needs on-device validation.
 
+## Individual Zotero-download preview implemented and CI tested; device UI pending (2026-10-11)
+
+The user photo confirmed the **read-only** Kindle storage report now displays **Device storage: 6.06 GiB; Available: 5.63 GiB; Zotero books in Documents: 12 / 28.2 MiB; Old storage: 0 / 0 MiB**. A two-step, individually selectable, paginated download preview was then implemented:
+
+- Main report links to **Select individual downloads**.
+- List sorted by attachment filename, five rows per page; checkbox-style marks persist across page navigation, with preview of count and total space.
+- Press-and-hold reveals complete file name, size, last *modified* timestamp, Zotero attachment key, storage root, and `.sdr` existence (not a guarantee of annotation backup/sync).
+- Clear, back and close actions; proper selection scoping to `root.id:key`.
+- **No file-deletion function is present at all** in `zotero_storage_manager.lua`; metadata DB, credentials and local PDFs/EPUBs stay untouched during this first UI test.
+- `tools/instalar_selecao_individual_kindle.sh` pins the validated source commit, backs up and replaces only `zotero_storage_manager.lua`, explicitly checks read-only mode, rejects any `os.remove(...)` call and guards against the underscore-local/gettext collision.
+
+The GitHub Actions run [38187423536](https://github.com/vict0rg/zoteroatelier.koplugin/actions/runs/38187423536) **passed** Lua 5.1 syntax, the mocked [selection regression test](../tools/test_storage_manager_read_only.lua), and shell syntax: test exercised 12 items, three pages, long-press `.sdr` metadata, marks across pages, calculated preview, clear marks and prohibited file deletion. An earlier run exposed an underscore variable shadowing bug in `freeSpace()`, which was fixed before this successful run.
+
+**Pending:** installing and testing the new individual-selection interface on the physical Kindle Oasis. No actual deletion may be activated until this is verified, and unsynced annotation safety must be assessed separately.
+
 ## Not yet established
 
 - Broader Kindle compatibility, performance, large-library behavior, and repeatability beyond the successful Oasis smoke test
