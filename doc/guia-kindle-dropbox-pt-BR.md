@@ -273,6 +273,24 @@ curl -fL https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/featur
 
 O instalador faz backup, copia apenas `zotero_storage_manager.lua`, exige o modo somente leitura e rejeita códigos com `os.remove`. A sintaxe e os principais fluxos de interação passaram no teste automatizado Lua 5.1. **A navegação no Kindle real ainda requer confirmação**. A exclusão efetiva só deve ser implementada depois dessa validação e da análise dos cuidados com anotações não sincronizadas.
 
+### Habilitar exclusão seletiva LOCAL no Kindle (experimental)
+
+Depois do teste no Oasis confirmando a listagem paginada e a seleção de artigos, foi implementado o botão **Delete checked local downloads**, com **duas confirmações antes da exclusão**. O primeiro quadro mostra quantos PDFs/EPUBs serão excluídos e seus nomes; a confirmação final alerta sobre anotações embutidas no PDF ou ainda não sincronizadas. O sistema só exclui arquivos selecionados que sejam anexos Zotero e permaneçam inalterados desde a escolha, nas duas pastas locais reconhecidas do Kindle. Não apaga registros bibliográficos do Zotero, originais do Dropbox, credenciais ou pastas `.sdr`. Se um arquivo tiver sido alterado, a operação é cancelada sem apagar nenhum.
+
+**Atenção:** anotações que existam apenas no PDF local, sem backup, podem ser perdidas com a exclusão. A presença de um arquivo `.sdr` não garante sincronização. O PDF pode ser baixado novamente ao abrir o anexo com internet, mas alterações feitas só na cópia local não são automaticamente recuperáveis.
+
+Para habilitar, feche o KOReader completamente, conecte o Kindle ao Linux Mint por USB e execute:
+
+```bash
+curl -fL https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/feature/dropbox-on-demand/tools/ativar_exclusao_individual_kindle.sh \
+  -o ~/Downloads/ativar_exclusao_individual_kindle.sh \
+  && bash ~/Downloads/ativar_exclusao_individual_kindle.sh
+```
+
+O script faz backup e instala apenas os dois módulos `main.lua` e `zotero_storage_manager.lua`, sem remover documentos durante a instalação. No KOReader, acesse **Zotero Atelier → Maintenance → Zotero storage and cleanup → Select individual downloads**. Marque um **artigo sem anotações importantes** para o primeiro teste, revise a prévia, pressione **Delete checked local downloads** e confirme duas vezes. Depois confira a redução de espaço e tente baixar novamente o mesmo artigo quando houver Wi-Fi.
+
+A simulação automatizada passou: testou exclusão de dois PDFs locais selecionados, manutenção dos outros dez, preservação de `.sdr` e cancelamento quando um arquivo muda. **Ainda é necessário confirmar a exclusão física no Kindle Oasis**.
+
 ## 8. Dúvidas frequentes
 
 **Os PDFs e EPUBs somem quando desligo o Wi-Fi?**  
