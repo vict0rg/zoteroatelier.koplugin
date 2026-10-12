@@ -28,9 +28,10 @@ jobs:
           luac5.1 -p main.lua
           luac5.1 -p zotero_storage_manager.lua
           luac5.1 -p tools/test_storage_manager_read_only.lua
-      - name: Exercise individual storage selection without KOReader or any file removal
+          luac5.1 -p tools/test_storage_manager_cleanup.lua
+      - name: Exercise safe per-file Kindle removal with two confirmations and no real filesystem
         run: |
-          lua5.1 tools/test_storage_manager_read_only.lua
+          lua5.1 tools/test_storage_manager_cleanup.lua
       - name: Check OAuth helper and installation shell script syntax
         run: |
           python3 -m py_compile tools/configurar_dropbox_oauth.py
