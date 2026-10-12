@@ -238,7 +238,7 @@ end
 local function showError(err)
     logger.err("Zotero individual storage selection: ", tostring(err))
     UIManager:show(InfoMessage:new({
-        text = _("Could not display the Zotero download list. No files were changed. Check crash.log."),
+        text = _("The Zotero storage operation failed. Check the remaining local files and KOReader crash.log before retrying."),
         icon = "notice-warning",
     }))
 end
@@ -379,8 +379,8 @@ local function confirmIndividualDeletion(plugin, files, selected, page, dialog)
     end
     local names = {}
     for file_index, file in ipairs(files) do
-        if snapshot[file.id] and #names < 4 then
-            names[#names + 1] = shortFilename(file.filename, 45)
+        if snapshot[file.id] and #names < 3 then
+            names[#names + 1] = shortFilename(file.filename, 32)
         end
     end
     local brief = table.concat(names, "\n")
