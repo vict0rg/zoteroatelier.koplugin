@@ -129,6 +129,16 @@ The GitHub Actions run [38187423536](https://github.com/vict0rg/zoteroatelier.ko
 
 **Pending:** installing and testing the new individual-selection interface on the physical Kindle Oasis. No actual deletion may be activated until this is verified, and unsynced annotation safety must be assessed separately.
 
+## Kindle selective local deletion code and automated verification (2026-10-11)
+
+The user shared a photograph of the per-file Kindle selection screen, which successfully displayed **page 2/3**, the five PDFs in that page, an individually marked `Larooij e Törnberg - 2025` article, and **four marked files totaling 10.2 MiB** across pages. Navigation and mark persistence were physically validated, but the screen lacked a delete action by design.
+
+The subsequent implementation adds **Delete checked local downloads** and requires two confirmations. The last step warns that embedded/unsynced annotations may be lost, even though KOReader `.sdr` folders remain. In the Kindle-only exact-path mode, each file is revalidated against fresh local Zotero metadata and on-disk attributes before removal; if selected files differ from the displayed snapshot, the whole operation aborts. Only selected `.pdf`/`.epub` files are removed; no directory recursion, cloud delete endpoint or SQLite edits. Report and selection remain non-destructive until explicit confirmations.
+
+GitHub Actions [38188051036](https://github.com/vict0rg/zoteroatelier.koplugin/actions/runs/38188051036) **passed** Lua 5.1 syntax, the mocked [double-confirmed local deletion test](../tools/test_storage_manager_cleanup.lua), and Bash syntax. Tests covered preserving 10 unselected files after deleting two selected PDFs, keeping an existing `.sdr`, and refusing deletion when an attachment changed after confirmation. `tools/ativar_exclusao_individual_kindle.sh` pins this tested revision and updates only `main.lua` and `zotero_storage_manager.lua` with backup.
+
+**Pending:** physical deletion test of **one document without important annotations** on Kindle Oasis, re-scan count, and online re-download. The code is experimental until these succeed.
+
 ## Not yet established
 
 - Broader Kindle compatibility, performance, large-library behavior, and repeatability beyond the successful Oasis smoke test
