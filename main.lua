@@ -569,10 +569,10 @@ function Plugin:getZoteroSubMenu()
                         end,
                     },
                     {
-                        -- Open the storage report only as a read-only diagnostic.
-                        -- Catch runtime exceptions so the menu cannot bring down
-                        -- KOReader if the experimental screen encounters an error.
-                        text = _("Zotero storage report (read-only test)"),
+                        -- Per-file deletion is guarded by two confirmations
+                        -- and filesystem preflight inside the storage manager.
+                        -- Keep runtime errors from terminating KOReader.
+                        text = _("Zotero storage and cleanup"),
                         callback = function()
                             local ok, err = xpcall(function()
                                 StorageManager.show(self)
