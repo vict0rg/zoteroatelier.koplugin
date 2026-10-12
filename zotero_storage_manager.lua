@@ -10,6 +10,7 @@ local ConfirmBox = require("ui/widget/confirmbox")
 local InfoMessage = require("ui/widget/infomessage")
 local lfs = require("libs/libkoreader-lfs")
 local util = require("ffi/util")
+local Device = require("device")
 local JSON = require("json")
 local logger = require("logger")
 local _ = require("gettext")
@@ -130,14 +131,47 @@ local function collect()
 end
 
 local function freeSpace()
-    -- Do not shadow the gettext translator named "_" with a numeric return
-    -- value from ffi/util.df(). Doing so crashed KOReader on Kindle.
-    local ok, total, free_bytes, available = pcall(util.df, ZoteroAPI.zotero_dir)
-    if not ok or type(total) ~= "number" or type(available) ~= "number" then
-        return _("Free disk space not available")
+    -- On some Kindle environments ffi/util.df may fail for the plugin data
+    -- directory even though the user storage volume is available. Prefer
+    -- native statvfs, and query the actual user volume as a second choice.
+    -- Never use "_" as a scratch variable: it is the gettext translator.
+    local paths = { ZoteroAPI.storage_dir, "/mnt/us", ZoteroAPI.zotero_dir }
+    for _, path in ipairs(paths) do
+        if type(path) == "string" and lfs.attributes(path, "mode") == "directory" then
+            local ok, total_bytes, free_bytes, available_bytes = pcall(util.df, path)
+            local total = tonumber(total_bytes)
+            local available = tonumber(available_bytes)
+            if ok and total and available and total > 0 and available >= 0 then
+                return _("Device storage") .. ": " .. sizeText(total) .. "\n"
+                    .. _("Available") .. ": " .. sizeText(available)
+            end
+        end
     end
-    return _("Device storage") .. ": " .. sizeText(total) .. "\n"
-        .. _("Available") .. ": " .. sizeText(available)
+
+    -- BusyBox's df is available on many Kindles even when ffi statvfs is
+    -- unavailable. Run ONLY the fixed /mnt/us command, never a user path.
+    -- Parse the 1K-blocks, Used, Available and Use% columns; fail closed.
+    if Device:isKindle() and type(io.popen) == "function" then
+        local ok_pipe, pipe = pcall(io.popen, "df -k /mnt/us 2>/dev/null", "r")
+        if ok_pipe and pipe then
+            local ok_read, output = pcall(function() return pipe:read("*a") end)
+            pcall(function() pipe:close() end)
+            if ok_read and type(output) == "string" then
+                for line in output:gmatch("[^\r\n]+") do
+                    local blocks, available_blocks = line:match(
+                        "%s+(%d+)%s+%d+%s+(%d+)%s+%d+%%"
+                    )
+                    local total = tonumber(blocks)
+                    local available = tonumber(available_blocks)
+                    if total and available and total > 0 and available >= 0 then
+                        return _("Device storage") .. ": " .. sizeText(total * 1024) .. "\n"
+                            .. _("Available") .. ": " .. sizeText(available * 1024)
+                    end
+                end
+            end
+        end
+    end
+    return _("Free disk space not available")
 end
 
 local function selectedTotals(roots, selected)
