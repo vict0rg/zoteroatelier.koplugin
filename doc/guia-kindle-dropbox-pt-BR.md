@@ -257,6 +257,22 @@ curl -fL https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/featur
 
 O script baixa uma revisão imutável e copia somente `zotero_storage_manager.lua` após backup. A limpeza de arquivos continua **desativada**.
 
+### Nova seleção individual de PDFs/EPUBs (visualização segura)
+
+Depois de validar no Kindle Oasis o espaço total **6,06 GiB**, disponível **5,63 GiB**, e **12 anexos locais ocupando 28,2 MiB**, foi criada uma segunda tela: **Maintenance → Zotero storage report (read-only test) → Select individual downloads**.
+
+A interface mostra cinco arquivos por página, com nome e tamanho. Toque no item para marcar/desmarcar; mantenha pressionado para consultar o nome completo, tamanho, data da última modificação do arquivo (que **não equivale necessariamente à data do download**), chave Zotero, pasta e presença de `.sdr`. As escolhas continuam marcadas quando se passa de página. `Preview selection` calcula os documentos e o tamanho selecionado; `Clear marks` limpa a seleção. **Nesta versão não há nenhuma rotina para apagar arquivos**, mesmo que estejam marcados. O arquivo `.sdr` não garante que anotações tenham sido sincronizadas.
+
+Para instalar SOMENTE essa atualização no Kindle, com KOReader encerrado e Kindle conectado por USB:
+
+```bash
+curl -fL https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/feature/dropbox-on-demand/tools/instalar_selecao_individual_kindle.sh \
+  -o ~/Downloads/instalar_selecao_individual_kindle.sh \
+  && bash ~/Downloads/instalar_selecao_individual_kindle.sh
+```
+
+O instalador faz backup, copia apenas `zotero_storage_manager.lua`, exige o modo somente leitura e rejeita códigos com `os.remove`. A sintaxe e os principais fluxos de interação passaram no teste automatizado Lua 5.1. **A navegação no Kindle real ainda requer confirmação**. A exclusão efetiva só deve ser implementada depois dessa validação e da análise dos cuidados com anotações não sincronizadas.
+
 ## 8. Dúvidas frequentes
 
 **Os PDFs e EPUBs somem quando desligo o Wi-Fi?**  
