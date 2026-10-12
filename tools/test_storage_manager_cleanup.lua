@@ -147,8 +147,11 @@ assert(scanned_count > 0, "Zotero DB should have been queried read-only")
 -- before deleting anything, including unchanged files.
 local after_list = windows[#windows - 1]
 expect(after_list.title, "Documents: 10")
--- Select first remaining document.
-after_list.buttons[1][1].callback()
+-- Return to page 1, where the first remaining document is Paper 02.
+after_list.buttons[6][1].callback()
+local page_one = current()
+expect(page_one.title, "Page 1/2")
+page_one.buttons[1][1].callback()
 local new_list = current()
 expect(new_list.title, "Marked: 1 / 2.0 MiB")
 new_list.buttons[8][1].callback()
