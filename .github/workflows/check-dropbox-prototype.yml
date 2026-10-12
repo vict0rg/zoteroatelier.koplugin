@@ -27,6 +27,10 @@ jobs:
           luac5.1 -p zotero_file_validation.lua
           luac5.1 -p main.lua
           luac5.1 -p zotero_storage_manager.lua
+          luac5.1 -p tools/test_storage_manager_read_only.lua
+      - name: Exercise individual storage selection without KOReader or any file removal
+        run: |
+          lua5.1 tools/test_storage_manager_read_only.lua
       - name: Check OAuth helper and installation shell script syntax
         run: |
           python3 -m py_compile tools/configurar_dropbox_oauth.py
@@ -38,3 +42,5 @@ jobs:
           bash -n tools/corrigir_download_pdf_kindle.sh
           bash -n tools/desativar_limpeza_kindle.sh
           bash -n tools/testar_relatorio_espaco_kindle.sh
+          bash -n tools/corrigir_espaco_livre_kindle.sh
+          bash -n tools/instalar_selecao_individual_kindle.sh
