@@ -7,7 +7,7 @@ umask 077
 MOUNT="${KINDLE_MOUNT:-/media/$USER/Kindle}"
 PLUGIN="$MOUNT/koreader/plugins/zoteroatelier.koplugin"
 # Verified fixed commit, so the CDN cannot deliver a mismatched branch state.
-BASE="https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/ded5c6ed3cbcd64846b00dcaf08a659aff9420df"
+BASE="https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/8b3856343f4453d20f155d8b3bb72376721435a2"
 BACKUP="$HOME/Downloads/BACKUP-ZOTERO-SELECAO-INDIVIDUAL-KINDLE-$(date +%Y%m%d-%H%M%S)"
 FILE="zotero_storage_manager.lua"
 
@@ -38,6 +38,10 @@ grep -Fq 'function M.showIndividual' "$WORK/$FILE" ||
     die "Modulo nao contem a nova selecao individual."
 grep -Fq 'Select individual downloads' "$WORK/$FILE" ||
     die "O menu de selecao individual nao foi encontrado."
+# Regression guard for the underscore/gettext collision that previously exited KOReader.
+if grep -Eq 'for[[:space:]]+_,' "$WORK/$FILE"; then
+    die "Modulo reutiliza '_' como indice e pode quebrar gettext; nada alterado."
+fi
 if grep -Eq 'os[[:space:]]*\.[[:space:]]*remove[[:space:]]*\(' "$WORK/$FILE"; then
     die "Modulo contem codigo de exclusao; operacao cancelada."
 fi
