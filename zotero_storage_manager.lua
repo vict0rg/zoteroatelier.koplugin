@@ -87,7 +87,7 @@ end
 
 local function collect()
     local roots = getRoots()
-    for _, root in ipairs(roots) do
+    for root_index, root in ipairs(roots) do
         root.files = {}
         root.bytes = 0
         root.count = 0
@@ -105,7 +105,7 @@ local function collect()
     while row do
         local valid_json, item = pcall(JSON.decode, row[1])
         if valid_json and validAttachment(item) then
-            for _, root in ipairs(roots) do
+            for root_index, root in ipairs(roots) do
                 if root.usable and not root.seen[item.key] then
                     local folder = root.path .. "/" .. item.key
                     if plainDirectory(folder) then
@@ -135,7 +135,7 @@ local function collect()
         row = stmt:step(row)
     end
     stmt:close()
-    for _, root in ipairs(roots) do root.seen = nil end
+    for root_index, root in ipairs(roots) do root.seen = nil end
     return roots
 end
 
@@ -145,7 +145,7 @@ local function freeSpace()
     -- native statvfs, and query the actual user volume as a second choice.
     -- Never use "_" as a scratch variable: it is the gettext translator.
     local paths = { ZoteroAPI.storage_dir, "/mnt/us", ZoteroAPI.zotero_dir }
-    for _, path in ipairs(paths) do
+    for path_index, path in ipairs(paths) do
         if type(path) == "string" and lfs.attributes(path, "mode") == "directory" then
             local ok, total_bytes, free_bytes, available_bytes = pcall(util.df, path)
             local total = tonumber(total_bytes)
@@ -188,8 +188,8 @@ end
 -- Only entries found again in the live local scan are counted in the preview.
 local function enumerateFiles(roots)
     local files = {}
-    for _, root in ipairs(roots) do
-        for _, file in ipairs(root.files) do
+    for root_index, root in ipairs(roots) do
+        for file_index, file in ipairs(root.files) do
             file.id = root.id .. ":" .. file.key
             file.storage_label = root.label
             files[#files + 1] = file
@@ -205,7 +205,7 @@ end
 
 local function selectionTotals(files, selected)
     local count, bytes, with_sidecars = 0, 0, 0
-    for _, file in ipairs(files) do
+    for file_index, file in ipairs(files) do
         if selected[file.id] then
             count = count + 1
             bytes = bytes + file.bytes
@@ -407,7 +407,7 @@ function M.show(plugin)
         "",
         _("Only local Zotero PDF/EPUB downloads are listed."),
     }
-    for _, root in ipairs(roots) do
+    for root_index, root in ipairs(roots) do
         lines[#lines + 1] = root.label .. ": " .. root.count .. " / " .. sizeText(root.bytes)
     end
     lines[#lines + 1] = ""
