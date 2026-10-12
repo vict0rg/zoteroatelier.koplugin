@@ -106,6 +106,14 @@ New branch code renames the numeric result to `free_bytes`, verifies that `total
 
 **Status: Code fixed and committed; physical Kindle test not yet performed.** Existing working local Zotero, Dropbox, annotation and PDF routines were left alone.
 
+## Kindle storage report opens successfully; free disk size pending (2026-10-11)
+
+The user provided a photo showing that **Zotero storage report (read-only)** now opens successfully on the physical Kindle Oasis, without crashing. Visible figures: **12** Zotero-managed local PDF/EPUB downloads occupying **28.2 MiB**, **0** legacy storage files / **0.0 MiB**, and **0 files selected**; the report confirms **READ-ONLY TEST: deletion is temporarily disabled**. The successful display validates the fixed gettext-variable-shadowing crash path and local Zotero SQLite/attachment file enumeration on this device.
+
+The top of the screen still said **Free disk space not available**. The module queries `ffi/util.df(ZoteroAPI.zotero_dir)`, which can fail on some Kindle versions. An enhanced **read-only** version now tries the actual user storage mount `/mnt/us` with native statvfs and, on Kindle only, uses a constant-command BusyBox `df -k /mnt/us` fallback. The fallback is defensive: if the response cannot be parsed, it still displays "not available". This enhancement has been committed but **is not yet validated on Kindle**.
+
+The single-file backup-enabled installer `tools/corrigir_espaco_livre_kindle.sh` pins the known commit and updates only `zotero_storage_manager.lua`. No documents, DB, .sdr, main menu or credentials are changed. **Do not enable deletion yet**; disk report still needs on-device validation.
+
 ## Not yet established
 
 - Broader Kindle compatibility, performance, large-library behavior, and repeatability beyond the successful Oasis smoke test
