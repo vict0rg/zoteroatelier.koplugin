@@ -7,7 +7,9 @@ umask 077
 
 MOUNT="${KINDLE_MOUNT:-/media/$USER/Kindle}"
 PLUGIN="$MOUNT/koreader/plugins/zoteroatelier.koplugin"
-BASE="https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/feature/dropbox-on-demand"
+# Fix the code download to an immutable commit containing BOTH the read-only
+# UI and the corrected manager, avoiding stale branch-content/CDN responses.
+BASE="https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/37a7722cd88837af5cb92e9fdebbb09301d26622"
 BACKUP="$HOME/Downloads/BACKUP-ZOTERO-RELATORIO-ESPACO-KINDLE-$(date +%Y%m%d-%H%M%S)"
 FILES=(main.lua zotero_storage_manager.lua)
 
