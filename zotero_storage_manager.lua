@@ -271,7 +271,7 @@ function M.showIndividual(plugin, selected, page)
     guarded(function()
         if not canInspect(plugin) then return end
         selected = selected or {}
-        local _, files = readLocalFiles()
+        local roots, files = readLocalFiles()
         local count, bytes, with_sidecars = selectionTotals(files, selected)
         local total_pages = math.max(1, math.ceil(#files / PAGE_SIZE))
         page = math.max(1, math.min(tonumber(page) or 1, total_pages))
