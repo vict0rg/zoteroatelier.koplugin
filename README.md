@@ -64,6 +64,10 @@ curl -fL https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/featur
 ```
 
 
+### Kindle on-device read-only report results and free-space follow-up
+
+On-device testing confirmed the read-only report opens and lists **12 local Zotero-managed PDF/EPUB downloads totaling 28.2 MiB**, with **zero old-storage files** and no documents selected. It did not exit KOReader. The remaining field **Free disk space not available** motivated a defensive `/mnt/us` mountpoint statvfs lookup and Kindle BusyBox `df -k /mnt/us` fallback. A [one-file Kindle updater](tools/corrigir_espaco_livre_kindle.sh) is provided for the *read-only* report; its success on the physical device has not yet been observed.
+
 ### Kindle storage report: diagnosed crash and protected read-only retest (2026-10-11)
 
 The Kindle crash on **Maintenance → Zotero storage and cleanup** was traced precisely to `zotero_storage_manager.lua:131: attempt to call local '_' (a number value)`. In `freeSpace()`, `local ok, total, _, available = pcall(util.df, ...)` shadowed the gettext translator named `_`. Renamed the ignored numeric return to `free_bytes` and added an `xpcall` wrapper around report opening. The replacement UI is now **read-only** with `SAFE_READ_ONLY = true`; its delete button cannot remove any file. This protective version is published but **requires on-Kindle retesting**.
