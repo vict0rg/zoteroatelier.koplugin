@@ -6,7 +6,6 @@
 local ZoteroAPI = require("zoteroapi")
 local UIManager = require("ui/uimanager")
 local ButtonDialog = require("ui/widget/buttondialog")
-local ConfirmBox = require("ui/widget/confirmbox")
 local InfoMessage = require("ui/widget/infomessage")
 local lfs = require("libs/libkoreader-lfs")
 local util = require("ffi/util")
@@ -17,9 +16,10 @@ local _ = require("gettext")
 
 local M = {}
 
--- First on-device diagnostic release: report sizes without permitting removal.
--- Re-enable deletion only after a device test and audit of annotation safety.
+-- Individual per-file selection preview only. There is deliberately NO file
+-- deletion code in this module until Kindle UI and annotation safeguards pass.
 local SAFE_READ_ONLY = true
+local PAGE_SIZE = 5
 
 local function sizeText(bytes)
     local mib = (tonumber(bytes) or 0) / (1024 * 1024)
@@ -113,7 +113,16 @@ local function collect()
                         if plainFile(path) then
                             local bytes = tonumber(lfs.attributes(path, "size")) or 0
                             if bytes > 0 then
-                                table.insert(root.files, { path = path, bytes = bytes, folder = folder })
+                                local sidecar_mode = lfs.symlinkattributes(path .. ".sdr", "mode")
+                                table.insert(root.files, {
+                                    path = path,
+                                    bytes = bytes,
+                                    folder = folder,
+                                    key = item.key,
+                                    filename = item.data.filename,
+                                    modified = tonumber(lfs.attributes(path, "modification")),
+                                    has_sidecar = sidecar_mode == "directory" or sidecar_mode == "file",
+                                })
                                 root.bytes = root.bytes + bytes
                                 root.count = root.count + 1
                                 root.seen[item.key] = true
@@ -174,148 +183,253 @@ local function freeSpace()
     return _("Free disk space not available")
 end
 
-local function selectedTotals(roots, selected)
-    local count, bytes = 0, 0
+
+-- One immutable selection ID per specific storage root and Zotero key.
+-- Only entries found again in the live local scan are counted in the preview.
+local function enumerateFiles(roots)
+    local files = {}
     for _, root in ipairs(roots) do
-        if selected[root.id] then
-            count = count + root.count
-            bytes = bytes + root.bytes
+        for _, file in ipairs(root.files) do
+            file.id = root.id .. ":" .. file.key
+            file.storage_label = root.label
+            files[#files + 1] = file
         end
     end
-    return count, bytes
+    table.sort(files, function(a, b)
+        local left, right = a.filename:lower(), b.filename:lower()
+        if left == right then return a.id < b.id end
+        return left < right
+    end)
+    return files
 end
 
-local function cleanSelected(selected)
-    -- Re-enumerate from the local Zotero metadata. Do not accept file paths
-    -- from the UI state, and never recurse-delete whole folders.
-    local roots = collect()
-    local deleted, bytes, failed = 0, 0, 0
-    for _, root in ipairs(roots) do
-        if selected[root.id] and root.usable then
-            for _, file in ipairs(root.files) do
-                -- Check path components again, immediately before removal.
-                if plainDirectory(root.path) and plainDirectory(file.folder)
-                    and plainFile(file.path) then
-                    local ok = os.remove(file.path)
-                    if ok then
-                        deleted = deleted + 1
-                        bytes = bytes + file.bytes
-                    else
-                        failed = failed + 1
-                    end
-                else
-                    failed = failed + 1
-                end
-            end
+local function selectionTotals(files, selected)
+    local count, bytes, with_sidecars = 0, 0, 0
+    for _, file in ipairs(files) do
+        if selected[file.id] then
+            count = count + 1
+            bytes = bytes + file.bytes
+            if file.has_sidecar then with_sidecars = with_sidecars + 1 end
         end
     end
-    -- Intentionally keep .sdr/sidecar files: reading progress, annotations,
-    -- display preferences and other auxiliary data remain intact.
-    logger.info("Zotero storage cleanup: removed local attachments", deleted,
-        "bytes", bytes, "failures", failed)
-    return deleted, bytes, failed
+    return count, bytes, with_sidecars
 end
 
-function M.show(plugin, selected)
-    selected = selected or { primary = false, legacy = false }
+-- Trim by UTF-8 codepoint rather than arbitrary byte offset; attachment file
+-- names frequently contain accented Portuguese characters.
+local function shortFilename(name, limit)
+    local value = name:gsub("[%c]", " ")
+    local pos, n = 1, 0
+    while pos <= #value and n < limit do
+        local first = value:byte(pos)
+        local width = (first >= 240 and 4) or (first >= 224 and 3)
+            or (first >= 192 and 2) or 1
+        if pos + width - 1 > #value then break end
+        pos = pos + width
+        n = n + 1
+    end
+    if pos > #value then return value end
+    return value:sub(1, pos - 1) .. "..."
+end
+
+local function showError(err)
+    logger.err("Zotero individual storage selection: ", tostring(err))
+    UIManager:show(InfoMessage:new({
+        text = _("Could not display the Zotero download list. No files were changed. Check crash.log."),
+        icon = "notice-warning",
+    }))
+end
+
+local function guarded(action)
+    local ok, err = xpcall(action, debug.traceback)
+    if not ok then showError(err) end
+end
+
+local function canInspect(plugin)
     if plugin.zotero_sync_in_progress then
         UIManager:show(InfoMessage:new({
-            text = _("Finish Zotero synchronization before cleaning local downloads."),
+            text = _("Finish Zotero synchronization before inspecting local downloads."),
         }))
-        return
+        return false
     end
     if plugin.ui and plugin.ui.document then
         UIManager:show(InfoMessage:new({
-            text = _("Close the current book before cleaning Zotero downloads."),
+            text = _("Close the open book before inspecting downloads."),
         }))
-        return
+        return false
     end
-    local success, roots = pcall(collect)
+    return true
+end
+
+local function readLocalFiles()
+    -- The local Zotero DB is never modified by this operation.
+    local roots = collect()
+    return roots, enumerateFiles(roots)
+end
+
+function M.showIndividual(plugin, selected, page)
+    guarded(function()
+        if not canInspect(plugin) then return end
+        selected = selected or {}
+        local _, files = readLocalFiles()
+        local count, bytes, with_sidecars = selectionTotals(files, selected)
+        local total_pages = math.max(1, math.ceil(#files / PAGE_SIZE))
+        page = math.max(1, math.min(tonumber(page) or 1, total_pages))
+
+        local lines = {
+            _("Tap an item to mark/unmark it; hold it to see the complete filename and details."),
+            _("Page") .. " " .. page .. "/" .. total_pages
+                .. " | " .. _("Documents") .. ": " .. #files,
+            _("Marked") .. ": " .. count .. " / " .. sizeText(bytes),
+            _("READ-ONLY: no documents can be deleted in this test."),
+        }
+        if with_sidecars > 0 then
+            lines[#lines + 1] = _("Marked items with KOReader .sdr data") .. ": " .. with_sidecars
+        end
+        local buttons = {}
+        local dialog
+
+        if #files == 0 then
+            lines[#lines + 1] = _("No downloaded Zotero PDF or EPUB files were found.")
+        else
+            local first_index = (page - 1) * PAGE_SIZE + 1
+            local last_index = math.min(#files, page * PAGE_SIZE)
+            for index = first_index, last_index do
+                -- Copy the loop item into an individual callback closure.
+                local file = files[index]
+                local checked = selected[file.id] == true
+                local mark = checked and "[x] " or "[ ] "
+                local display_name = shortFilename(file.filename, 35)
+                buttons[#buttons + 1] = {{
+                    text = mark .. display_name .. " (" .. sizeText(file.bytes) .. ")",
+                    align = "left",
+                    callback = function()
+                        selected[file.id] = not selected[file.id]
+                        UIManager:close(dialog)
+                        M.showIndividual(plugin, selected, page)
+                    end,
+                    hold_callback = function()
+                        local modified = file.modified
+                            and os.date("%d/%m/%Y %H:%M", file.modified) or _("Unknown")
+                        UIManager:show(InfoMessage:new({
+                            text = file.filename
+                                .. "\n\n" .. _("File size") .. ": " .. sizeText(file.bytes)
+                                .. "\n" .. _("File last modified") .. ": " .. modified
+                                .. "\n" .. _("Zotero key") .. ": " .. file.key
+                                .. "\n" .. _("Storage") .. ": " .. file.storage_label
+                                .. "\n" .. _("KOReader .sdr data") .. ": "
+                                    .. (file.has_sidecar and _("Present") or _("Not found"))
+                                .. "\n\n" .. _("An .sdr folder does not prove that annotations have been synchronized."),
+                        }))
+                    end,
+                }}
+            end
+        end
+
+        if total_pages > 1 then
+            buttons[#buttons + 1] = {
+                {
+                    text = _("Previous"),
+                    enabled = page > 1,
+                    callback = function()
+                        UIManager:close(dialog)
+                        M.showIndividual(plugin, selected, page - 1)
+                    end,
+                },
+                {
+                    text = _("Next"),
+                    enabled = page < total_pages,
+                    callback = function()
+                        UIManager:close(dialog)
+                        M.showIndividual(plugin, selected, page + 1)
+                    end,
+                },
+            }
+        end
+
+        buttons[#buttons + 1] = {
+            {
+                text = _("Clear marks"),
+                enabled = count > 0,
+                callback = function()
+                    UIManager:close(dialog)
+                    M.showIndividual(plugin, {}, page)
+                end,
+            },
+            {
+                text = _("Preview selection"),
+                enabled = count > 0,
+                callback = function()
+                    local message = _("Selected Zotero downloads") .. ": " .. count
+                        .. "\n" .. _("Total local PDF/EPUB size") .. ": " .. sizeText(bytes)
+                        .. "\n" .. _("With KOReader .sdr data") .. ": " .. with_sidecars
+                        .. "\n\n" .. _("READ-ONLY: no files were deleted.")
+                        .. "\n" .. _("Do not assume .sdr reading data or annotations are backed up or synced.")
+                    UIManager:show(InfoMessage:new({ text = message }))
+                end,
+            },
+        }
+        buttons[#buttons + 1] = {
+            {
+                text = _("Back to report"),
+                callback = function()
+                    UIManager:close(dialog)
+                    M.show(plugin)
+                end,
+            },
+            {
+                text = _("Close"),
+                callback = function() UIManager:close(dialog) end,
+            },
+        }
+
+        dialog = ButtonDialog:new({
+            title = _("Zotero downloads - individual selection (read-only)")
+                .. "\n\n" .. table.concat(lines, "\n"),
+            buttons = buttons,
+            width_factor = 0.94,
+        })
+        UIManager:show(dialog)
+    end)
+end
+
+function M.show(plugin)
+    if not canInspect(plugin) then return end
+    local success, roots_or_error, files = pcall(readLocalFiles)
     if not success then
-        logger.err("Zotero storage manager: failed to scan: ", roots)
-        UIManager:show(InfoMessage:new({
-            text = _("Unable to inspect Zotero local downloads. Check crash.log."),
-            icon = "notice-warning",
-        }))
+        showError(roots_or_error)
         return
     end
 
-    local lines = { freeSpace(), "", _("Only managed Zotero PDF/EPUB downloads are selectable.") }
-    local buttons = {}
-    local count, bytes = selectedTotals(roots, selected)
-    local dialog
+    local roots = roots_or_error
+    local lines = {
+        freeSpace(),
+        "",
+        _("Only local Zotero PDF/EPUB downloads are listed."),
+    }
     for _, root in ipairs(roots) do
-        table.insert(lines, root.label .. ": " .. root.count .. " / " .. sizeText(root.bytes))
-        local which = root.id
-        local marker = selected[which] and "[x] " or "[ ] "
-        table.insert(buttons, {
-            {
-                text = marker .. root.label .. " (" .. sizeText(root.bytes) .. ")",
-                callback = function()
-                    UIManager:close(dialog)
-                    selected[which] = not selected[which]
-                    M.show(plugin, selected)
-                end,
-            },
-        })
+        lines[#lines + 1] = root.label .. ": " .. root.count .. " / " .. sizeText(root.bytes)
     end
-    table.insert(lines, "")
-    table.insert(lines, _("Selected, estimated recovery") .. ": " .. count .. " / " .. sizeText(bytes))
-    if SAFE_READ_ONLY then
-        table.insert(lines, _("READ-ONLY TEST: deletion is temporarily disabled."))
-    end
-    table.insert(lines, _("No metadata, credentials, reading progress or shared KOReader cache will be erased."))
-    table.insert(buttons, {
-        {
-            text = _("Close"),
-            callback = function() UIManager:close(dialog) end,
-        },
-        {
-            text = SAFE_READ_ONLY and _("Delete disabled (read-only test)") or _("Delete selected downloads"),
-            callback = function()
-                if SAFE_READ_ONLY then
-                    UIManager:show(InfoMessage:new({
-                        text = _("No documents can be deleted in this test version."),
-                        icon = "notice-info",
-                    }))
-                    return
-                end
-                UIManager:close(dialog)
-                if count == 0 then
-                    UIManager:show(InfoMessage:new({ text = _("No downloads selected.") }))
-                    return
-                end
-                local confirm = ConfirmBox:new({
-                    text = _("Remove local Zotero PDF/EPUB files?")
-                        .. "\n\n" .. count .. " " .. _("file(s)")
-                        .. "\n" .. _("Estimated space") .. ": " .. sizeText(bytes)
-                        .. "\n\n" .. _("This cannot be undone locally. Zotero metadata and reading progress remain. Files can be downloaded again when online."),
-                    ok_text = _("Delete"),
-                    ok_callback = function()
-                        local ok, removed, freed, failed = pcall(cleanSelected, selected)
-                        if not ok then
-                            logger.err("Zotero storage manager: cleanup error: ", removed)
-                            UIManager:show(InfoMessage:new({
-                                text = _("Cleanup interrupted; check KOReader crash.log."),
-                                icon = "notice-warning",
-                            }))
-                            return
-                        end
-                        UIManager:show(InfoMessage:new({
-                            text = _("Removed") .. ": " .. removed
-                                .. "\n" .. _("Estimated space recovered") .. ": " .. sizeText(freed)
-                                .. "\n" .. _("Failed") .. ": " .. failed
-                                .. "\n" .. _("The SQLite library and reading settings were preserved."),
-                        }))
-                    end,
-                })
-                UIManager:show(confirm)
-            end,
-        },
-    })
+    lines[#lines + 1] = ""
+    lines[#lines + 1] = _("READ-ONLY TEST: individual selection does not delete any files.")
+    lines[#lines + 1] = _("Zotero metadata, Dropbox files and .sdr remain untouched.")
+
+    local dialog
     dialog = ButtonDialog:new({
         title = _("Zotero storage report (read-only)") .. "\n\n" .. table.concat(lines, "\n"),
-        buttons = buttons,
+        buttons = {
+            {{
+                text = _("Select individual downloads") .. " (" .. #files .. ")",
+                callback = function()
+                    UIManager:close(dialog)
+                    M.showIndividual(plugin, {}, 1)
+                end,
+            }},
+            {{
+                text = _("Close"),
+                callback = function() UIManager:close(dialog) end,
+            }},
+        },
     })
     UIManager:show(dialog)
 end
