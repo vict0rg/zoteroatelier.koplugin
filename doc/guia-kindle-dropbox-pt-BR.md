@@ -243,6 +243,20 @@ curl -fL https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/featur
 
 Se ainda apresentar erro, interrompa o teste e use o instalador `tools/desativar_limpeza_kindle.sh` para voltar à entrada de menu desativada (revisão fixa). **A correção ainda não foi validada no Kindle; não reative a limpeza permanente antes da validação.**
 
+### Relatório de espaço — teste no Oasis e tamanho total
+
+O relatório **somente leitura** agora abriu no Kindle Oasis, mostrando **12 documentos baixados / 28,2 MiB**, com armazenamento antigo vazio e nenhuma exclusão selecionada. Contudo, o campo de espaço livre apareceu como `Free disk space not available`. Foi implementada uma tentativa alternativa, sem efeito nos dados, que consulta a partição `/mnt/us` e, caso necessário, utiliza o comando fixo `df -k /mnt/us` no Kindle. **Essa segunda correção ainda precisa de teste físico.**
+
+Para instalar **apenas** o novo módulo de relatório, com KOReader totalmente fechado e Kindle montado por USB:
+
+```bash
+curl -fL https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/feature/dropbox-on-demand/tools/corrigir_espaco_livre_kindle.sh \
+  -o ~/Downloads/corrigir_espaco_livre_kindle.sh \
+  && bash ~/Downloads/corrigir_espaco_livre_kindle.sh
+```
+
+O script baixa uma revisão imutável e copia somente `zotero_storage_manager.lua` após backup. A limpeza de arquivos continua **desativada**.
+
 ## 8. Dúvidas frequentes
 
 **Os PDFs e EPUBs somem quando desligo o Wi-Fi?**  
