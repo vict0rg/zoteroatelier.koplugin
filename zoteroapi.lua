@@ -188,7 +188,7 @@ VALUES
 --AND EXISTS (SELECT collection_hierarchy.key FROM collection_hierarchy INTERSECT SELECT value FROM json_each(jsonb_extract(attachment_data.parent_value, '$.data.collections')))
 ---- and local version must be lower than remote version (otherwise its considered up-to-date)
 --AND coalesce((SELECT version FROM attachment_versions WHERE attachment_versions.key = attachment_data.key), 0) < jsonb_extract(attachment_data.value, '$.version');
---[[
+--[=[
 -- NOTE: This VIEW is currently unused and kept for reference
 -- select all pdf attachments present locally (would need JSON parsing in Lua if used)
 local ZOTERO_CREATE_VIEWS = [[
@@ -202,7 +202,7 @@ SELECT
 FROM attachment_versions
 LEFT JOIN items ON attachment_versions.key = items.key;
 ]]
---]]
+--]=]
 
 -- Make sure there is at least one item in libraries table: ony insert if table is empty:
 local ZOTERO_DB_INIT_LIBS = [[
