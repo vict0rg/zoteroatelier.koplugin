@@ -45,5 +45,6 @@ jobs:
           bash -n tools/testar_relatorio_espaco_kindle.sh
           bash -n tools/corrigir_espaco_livre_kindle.sh
           bash -n tools/instalar_selecao_individual_kindle.sh
+          bash -n tools/instalar_exclusao_individual_kindle.sh
           bash -n tools/ativar_exclusao_individual_kindle.sh
           bash -n tools/restaurar_selecao_sem_exclusao_kindle.sh
