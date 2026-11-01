@@ -7,7 +7,7 @@ umask 077
 
 MOUNT="${KINDLE_MOUNT:-/media/$USER/Kindle}"
 PLUGIN="$MOUNT/koreader/plugins/zoteroatelier.koplugin"
-BASE="https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/efb6261679ebcc163fa97929651fbc4e16bb1da1"
+BASE="https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/2bd78b0ef970a71fc956648304c01f836115cb76"
 BACKUP="$HOME/Downloads/BACKUP-ZOTERO-ATELIER-SEM-DUPLICATAS-$(date +%Y%m%d-%H%M%S)"
 FILES=(zoteroapi.lua annotations.lua main.lua)
 
@@ -54,6 +54,8 @@ grep -Fq 'fresh:saveSetting("annotations", annotation_snapshot)' "$WORK/main.lua
     die "Versao insegura: perda de anotacoes ao reabrir PDF."
 grep -Fq 'function Annotations.findEquivalentAnnotation' "$WORK/annotations.lua" ||
     die "Versao insegura: protecao contra duplicatas ausente."
+grep -Fq 'and k_annotations[i].zoteroSyncedFingerprint == nil' "$WORK/annotations.lua" ||
+    die "Versao insegura: anotacao anteriormente sincronizada poderia ser reenviada."
 grep -Fq 'Zotero: library catalogue refresh will not upload annotations' "$WORK/zoteroapi.lua" ||
     die "Versao insegura: envio automatico da biblioteca ainda habilitado."
 if command -v luac5.1 >/dev/null 2>&1; then
