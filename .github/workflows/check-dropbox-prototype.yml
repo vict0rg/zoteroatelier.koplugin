@@ -22,6 +22,8 @@ jobs:
           sudo apt-get install -y lua5.1
       - name: Check KOReader Lua syntax
         run: |
+          luac5.1 -p annotation_delete_state.lua
+          luac5.1 -p tools/test_annotation_deletions.lua
           luac5.1 -p annotation_panel.lua
           luac5.1 -p _meta.lua
           luac5.1 -p annotations.lua
@@ -43,6 +45,9 @@ jobs:
       - name: Verify bidirectional Kindle Zotero annotation pull is safe
         run: |
           lua5.1 tools/test_two_way_annotation_sync.lua
+      - name: Confirmed two-way annotation deletions with no false positive
+        run: |
+          lua5.1 tools/test_annotation_deletions.lua
       - name: Reproduce KOReader close/reload overwriting Zotero annotation keys
         run: |
           lua5.1 tools/test_document_reload_lifecycle.lua
@@ -73,3 +78,4 @@ jobs:
           bash -n tools/restaurar_selecao_sem_exclusao_kindle.sh
           bash -n tools/atualizar_atelier_kindle_anotacoes_2026-11-01.sh
           bash -n tools/atualizar_atelier_kindle_upload_2026-11-01.sh
+          bash -n tools/instalar_exclusoes_confirmadas_kindle.sh
