@@ -436,23 +436,10 @@ function Plugin:onReaderReady(readerui)
     if not item then
         return
     end
-    local doc_settings = DocSettings:open(file_path)
-    local sidecar_lib_version = doc_settings:readSetting("zoteroLibVersion", 0)
-    doc_settings:close()
+    -- Do not restore highlights from an old local SQLite catalogue here.
+    -- It can contain items deleted remotely and misses recent Zotero edits.
+    -- The scheduled online per-attachment GET below is authoritative.
     logger.info("Zotero: Matched open document to attachment " .. key)
-    if sidecar_lib_version < ZoteroAPI.getUserLibraryVersion() then
-        local ok, err = pcall(function()
-            local result = ZoteroAPI.attachItemAnnotations(item, nil, file_path)
-            if result and result:match("^Error") then
-                logger.warn("Zotero: " .. tostring(result))
-            else
-                self:reloadReaderAnnotations(readerui)
-            end
-        end)
-        if not ok then
-            logger.err("Zotero: Failed to attach annotations on reader open: ", err)
-        end
-    end
     -- Upload local create/edit/delete shortly after open (sidecar may have pending changes)
     UIManager:scheduleIn(1.0, function()
         self:syncOpenDocumentAnnotations(readerui, { notify = false, pull = true })
