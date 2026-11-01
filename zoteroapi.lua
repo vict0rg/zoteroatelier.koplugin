@@ -2846,34 +2846,17 @@ function API.syncAnnotationsForAttachment(key, file_path)
         end
     end
 
-    -- Find deletions (annotations in DB but not in SDR)
-    local deleted_items = {}
-    for db_key, ann_info in pairs(db_annotations) do
-        if not sdr_keys[db_key] then
-            table.insert(deleted_items, { key = db_key, version = ann_info.version })
-            logger.info(
-                "Zotero: Detected deleted annotation: "
-                .. db_key
-                .. " (version: "
-                .. tostring(ann_info.version)
-                .. ")"
-            )
-        end
-    end
-
+    -- DATA SAFETY: NEVER infer a deletion from an annotation missing in an
+    -- SDR file. The Kindle may not yet have imported that remote annotation,
+    -- or the sidecar may not have been flushed. Previously this block deleted
+    -- 42 real Zotero annotations during 2026-11-01 syncs.
+    -- Remote annotation deletion requires a separate explicit user action,
+    -- not presence/absence comparison.
     local delete_fails = 0
-    local successfully_deleted = {}
-    if #deleted_items > 0 then
-        delete_fails, successfully_deleted = API.deleteItems(deleted_items)
-    end
-
-    if #successfully_deleted > 0 then
-        local stmt_delete = db:prepare(ZOTERO_DB_DELETE_ITEM)
-        for _, del_key in ipairs(successfully_deleted) do
-            stmt_delete:reset():bind1(1, del_key):step()
-            logger.info("Zotero: Removed annotation " .. del_key .. " from local database")
+    for db_key, _ in pairs(db_annotations) do
+        if not sdr_keys[db_key] then
+            logger.info("Zotero: Remote annotation is absent from this SDR; preserving item " .. db_key)
         end
-        stmt_delete:close()
     end
 
     local upload_fails, upload_err = Annotations.createAnnotations(file_path, key, API.createItems)
@@ -3415,33 +3398,14 @@ function API.attachItemAnnotations(item, annotation_callback, filePathOverride)
         logger.dbg("Zotero: " .. #koreaderAnnotations .. " KOReader annotations in sidecar")
 
         local localZotAnn = {}
-        -- If there are locally stored KOReader annotations, check them to identify Zotero annotations
-        local annotationsToRemove = {}
+        -- DATA SAFETY: absence from a possibly stale/partial local Zotero DB
+        -- does NOT prove a remote deletion. The old code removed legitimate
+        -- highlights when their version was less than the *global* library
+        -- version, even when updated by unrelated items.
         for idx, ann in ipairs(koreaderAnnotations) do
-            if ann.zoteroKey ~= nil then
-                if zoteroItems[ann.zoteroKey] ~= nil then
-                    localZotAnn[ann.zoteroKey] = { ["position"] = idx, ["version"] = ann.zoteroVersion }
-                else
-                    -- Check if the annotation still exists in the database
-                    local item = API.getItem(ann.zoteroKey)
-                    if item == nil then
-                        logger.info(
-                            "Zotero: DELETION BUG FIX: Delete local Zotero annotation "
-                            .. ann.zoteroKey
-                            .. " (not found in database)"
-                        )
-                        table.insert(annotationsToRemove, idx)
-                    elseif ann.zoteroVersion < libVersion then
-                        logger.info("Zotero: Delete local Zotero annotation " .. ann.zoteroKey .. " (version outdated)")
-                        table.insert(annotationsToRemove, idx)
-                    end
-                end
+            if ann.zoteroKey ~= nil and zoteroItems[ann.zoteroKey] ~= nil then
+                localZotAnn[ann.zoteroKey] = { ["position"] = idx, ["version"] = ann.zoteroVersion }
             end
-        end
-
-        -- Remove annotations in reverse order to maintain correct indices
-        for i = #annotationsToRemove, 1, -1 do
-            table.remove(koreaderAnnotations, annotationsToRemove[i])
         end
 
         if is_pdf then
