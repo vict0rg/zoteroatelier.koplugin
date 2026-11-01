@@ -368,8 +368,12 @@ function Plugin:reloadReaderAnnotations(readerui)
     -- A deep snapshot is essential: KOReader can mutate the cached table
     -- while closing the old reader. A shared table would not protect imports.
     local annotations_now = latest:readSetting("annotations", {}) or {}
-    local snapshot_ok, annotation_snapshot = pcall(function()
-        return JSON.decode(JSON.encode(annotations_now))
+    local deletion_baseline = latest:readSetting("zoteroConfirmedAnnotationKeysV1")
+    local deletion_archive = latest:readSetting("zoteroDeletedAnnotationArchiveV1")
+    local snapshot_ok, annotation_snapshot, baseline_snapshot, archive_snapshot = pcall(function()
+        return JSON.decode(JSON.encode(annotations_now)),
+            deletion_baseline and JSON.decode(JSON.encode(deletion_baseline)) or nil,
+            deletion_archive and JSON.decode(JSON.encode(deletion_archive)) or nil
     end)
     if not snapshot_ok or type(annotation_snapshot) ~= "table" then
         logger.err("Zotero: cannot snapshot annotations; refusing unsafe reload")
@@ -385,6 +389,14 @@ function Plugin:reloadReaderAnnotations(readerui)
             if closed_file == file_path then
                 local fresh = DocSettings:open(file_path)
                 fresh:saveSetting("annotations", annotation_snapshot)
+                -- KOReader closes with older in-memory DocSettings. Preserve
+                -- the durable deletion baseline and recovery archive too.
+                if baseline_snapshot then
+                    fresh:saveSetting("zoteroConfirmedAnnotationKeysV1", baseline_snapshot)
+                end
+                if archive_snapshot then
+                    fresh:saveSetting("zoteroDeletedAnnotationArchiveV1", archive_snapshot)
+                end
                 fresh:flush()
                 logger.info("Zotero: restored authoritative sidecar after KOReader close")
             end
