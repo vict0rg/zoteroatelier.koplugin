@@ -130,7 +130,7 @@ function AnnotationPanel.show(ui, opts)
                 return
             end
             local page = ann.pageno or ann.page
-            if page and ui.paging and ui.paging:onGotoPage then
+            if page and ui.paging and ui.paging.onGotoPage then
                 ui.paging:onGotoPage(tonumber(page))
             elseif page and ui.link and ui.link.onGotoPage then
                 ui.link:onGotoPage(tonumber(page))

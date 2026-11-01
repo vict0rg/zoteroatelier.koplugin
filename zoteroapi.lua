@@ -8,6 +8,9 @@ local sha2 = require("ffi/sha2")
 local SQ3 = require("lua-ljsqlite3/init")
 local logger = require("logger")
 local Annotations = require("annotations")
+local DropboxBridge = require("zotero_dropbox")
+local FileValidation = require("zotero_file_validation")
+local Device = require("device")
 local _ = require("gettext")
 -- For my annotation routines:
 local DocSettings = require("docsettings")
@@ -103,48 +106,48 @@ CREATE TABLE IF NOT EXISTS itemAnnotations (
 ]]
 
 local ZOTERO_DB_INIT_ITEMTYPES = [[
-INSERT INTO itemTypes(itemTypeID,typeName)
+INSERT OR IGNORE INTO itemTypes(itemTypeID,typeName)
 VALUES
-(1,"annotation"          ),
-(2,"artwork"             ),
-(3,"attachment"          ),
-(4,"audioRecording"      ),
-(5,"bill"                ),
-(6,"blogPost"            ),
-(7,"book"                ),
-(8,"bookSection"         ),
-(9,"case"                ),
-(10,"computerProgram"    ),
-(11,"conferencePaper"    ),
-(12,"dictionaryEntry"    ),
-(13,"document"           ),
-(14,"email"              ),
-(15,"encyclopediaArticle"),
-(16,"film"               ),
-(17,"forumPost"          ),
-(18,"hearing"            ),
-(19,"instantMessage"     ),
-(20,"interview"          ),
-(21,"journalArticle"     ),
-(22,"letter"             ),
-(23,"magazineArticle"    ),
-(24,"manuscript"         ),
-(25,"map"                ),
-(26,"newspaperArticle"   ),
-(27,"note"               ),
-(28,"patent"             ),
-(29,"podcast"            ),
-(30,"preprint"           ),
-(31,"presentation"       ),
-(32,"radioBroadcast"     ),
-(33,"report"             ),
-(34,"statute"            ),
-(35,"thesis"             ),
-(36,"tvBroadcast"        ),
-(37,"videoRecording"     ),
-(38,"webpage"            ),
-(39,"dataset"            ),
-(40,"standard"           );
+(1,'annotation'          ),
+(2,'artwork'             ),
+(3,'attachment'          ),
+(4,'audioRecording'      ),
+(5,'bill'                ),
+(6,'blogPost'            ),
+(7,'book'                ),
+(8,'bookSection'         ),
+(9,'case'                ),
+(10,'computerProgram'    ),
+(11,'conferencePaper'    ),
+(12,'dictionaryEntry'    ),
+(13,'document'           ),
+(14,'email'              ),
+(15,'encyclopediaArticle'),
+(16,'film'               ),
+(17,'forumPost'          ),
+(18,'hearing'            ),
+(19,'instantMessage'     ),
+(20,'interview'          ),
+(21,'journalArticle'     ),
+(22,'letter'             ),
+(23,'magazineArticle'    ),
+(24,'manuscript'         ),
+(25,'map'                ),
+(26,'newspaperArticle'   ),
+(27,'note'               ),
+(28,'patent'             ),
+(29,'podcast'            ),
+(30,'preprint'           ),
+(31,'presentation'       ),
+(32,'radioBroadcast'     ),
+(33,'report'             ),
+(34,'statute'            ),
+(35,'thesis'             ),
+(36,'tvBroadcast'        ),
+(37,'videoRecording'     ),
+(38,'webpage'            ),
+(39,'dataset'            ),
+(40,'standard'           );
 ]]
 
 -- TODO: Check if this makes sense to remove
@@ -185,7 +188,7 @@ VALUES
 --AND EXISTS (SELECT collection_hierarchy.key FROM collection_hierarchy INTERSECT SELECT value FROM json_each(jsonb_extract(attachment_data.parent_value, '$.data.collections')))
 ---- and local version must be lower than remote version (otherwise its considered up-to-date)
 --AND coalesce((SELECT version FROM attachment_versions WHERE attachment_versions.key = attachment_data.key), 0) < jsonb_extract(attachment_data.value, '$.version');
---[[
+--[=[
 -- NOTE: This VIEW is currently unused and kept for reference
 -- select all pdf attachments present locally (would need JSON parsing in Lua if used)
 local ZOTERO_CREATE_VIEWS = [[
@@ -199,7 +202,7 @@ SELECT
 FROM attachment_versions
 LEFT JOIN items ON attachment_versions.key = items.key;
 ]]
---]]
+--]=]
 
 -- Make sure there is at least one item in libraries table: ony insert if table is empty:
 local ZOTERO_DB_INIT_LIBS = [[
@@ -209,7 +212,7 @@ INSERT INTO libraries(type, editable, name) SELECT 'user',1,'' WHERE NOT EXISTS(
 local ZOTERO_DB_INIT_COLLECTIONS = [[
 -- only insert item if table is empty:
 -- 'Fake collection' for items in root
-INSERT INTO collections(collectionName, libraryID, key) SELECT '',1,'/' WHERE NOT EXISTS(SELECT collectionID FROM collections);
+INSERT INTO collections(collectionName, libraryID, key) SELECT '',1,'/' WHERE NOT EXISTS(SELECT 1 FROM collections WHERE key='/');
 ]]
 
 local ZOTERO_CREATE_ITEMKEY_INDEX = [[
@@ -516,25 +519,45 @@ function API.openDB()
             logger.info("Zotero: db version is 0. Set up tables.")
             API.db:exec(ZOTERO_DB_SCHEMA)
             logger.info("Zotero: Set up user library.")
-            API.db:rowexec(ZOTERO_DB_INIT_LIBS)
-            local cnt = API.db:rowexec(ZOTERO_DB_CHANGES)
-            if cnt ~= nil then
-                logger.info("Zotero: Changes in libraries table: ", tonumber(cnt))
+            API.db:exec(ZOTERO_DB_INIT_LIBS)
+            -- SQLite builds used by Kindle/KOReader may disable double-quoted
+            -- string literals. Older versions of the seed statement used
+            -- "attachment" instead of 'attachment', stopping initialization
+            -- before the root collection and PRAGMA user_version were created.
+            logger.info("Zotero: Ensure item type definitions.")
+            API.db:exec(ZOTERO_DB_INIT_ITEMTYPES)
+            logger.info("Zotero: Ensure root collection.")
+            API.db:exec(ZOTERO_DB_INIT_COLLECTIONS)
+
+            local type_count = tonumber(API.db:rowexec("SELECT COUNT(*) FROM itemTypes;")) or 0
+            local root_count = tonumber(API.db:rowexec("SELECT COUNT(*) FROM collections WHERE key = '/';")) or 0
+            if type_count < 40 or root_count ~= 1 then
+                error(("Zotero database initialization incomplete: itemTypes=%d, rootCollections=%d"):format(
+                    type_count, root_count))
             end
-            local cnt = API.db:rowexec("SELECT COUNT(*) FROM itemTypes")
-            if cnt == 0 then
-                logger.info("Zotero: Set up user itemTypes.")
-                API.db:exec(ZOTERO_DB_INIT_ITEMTYPES)
-                local cnt = API.db:rowexec(ZOTERO_DB_CHANGES)
-                if cnt ~= nil then
-                    logger.info("Zotero: Changes in itemTypes table: ", tonumber(cnt))
+
+            -- A previous failed first sync could already have written the
+            -- remote Zotero library version despite saving zero actual items.
+            -- Reset ONLY that demonstrably empty, uninitialized database's
+            -- sync cursor, to force a full refetch without dropping any tables,
+            -- cached documents, annotations, or credentials.
+            local item_count = tonumber(API.db:rowexec("SELECT COUNT(*) FROM items;")) or 0
+            local coll_count = tonumber(API.db:rowexec("SELECT COUNT(*) FROM collections;")) or 0
+            if item_count == 0 and coll_count == 1 then
+                local old_cursor = tonumber(API.db:rowexec("SELECT version FROM libraries WHERE libraryID = 1;")) or 0
+                if old_cursor > 0 then
+                    logger.warn("Zotero: empty incomplete DB with nonzero sync cursor; resetting cursor to refetch")
+                    API.db:exec("UPDATE libraries SET version = 0 WHERE libraryID = 1;")
+                    API.libVersion = 0
                 end
             end
-            logger.info("Zotero: Set up root collection.")
-            API.db:exec(ZOTERO_DB_INIT_COLLECTIONS)
-            -- Create index for item keys
+
             API.db:exec(ZOTERO_CREATE_ITEMKEY_INDEX)
             API.setDatabaseVersion(db_version)
+            local final_version = tonumber(API.db:rowexec("PRAGMA user_version;")) or 0
+            if final_version ~= db_version then
+                error("Zotero database schema version could not be saved")
+            end
         else
             API.getUserLibraryVersion()
             logger.info("Zotero: Local db version: " .. API.libVersion)
@@ -558,12 +581,39 @@ function API.init(zotero_dir)
     local settings_path = BaseUtil.joinPath(API.zotero_dir, "meta.lua")
     API.settings = LuaSettings:open(settings_path)
 
-    API.storage_dir = BaseUtil.joinPath(API.zotero_dir, "storage")
+    -- Keep the Zotero metadata database and credentials in the KOReader
+    -- data directory, but put downloaded books under Kindle /documents.
+    -- This makes PDF/EPUB attachments visible to KOReader's recursive cover
+    -- browser, without relocating the SQLite database or Dropbox tokens.
+    -- Only a Kindle with its standard /mnt/us/documents volume is
+    -- affected; desktop/Flatpak continues to use data-dir/zotero/storage.
+    -- Detect the *device*, not the exact spelling of DataStorage:getDataDir(),
+    -- which can vary with the KOReader installation/launcher.
+    API.legacy_storage_dir = BaseUtil.joinPath(API.zotero_dir, "storage")
+    API.storage_dir = API.legacy_storage_dir
+    if Device:isKindle() then
+        local documents_dir = "/mnt/us/documents"
+        if lfs.attributes(documents_dir, "mode") == "directory" then
+            local zotero_documents_dir = BaseUtil.joinPath(documents_dir, "Zotero")
+            if lfs.attributes(zotero_documents_dir, "mode") ~= "directory" then
+                local ok, err = lfs.mkdir(zotero_documents_dir)
+                if not ok then
+                    logger.warn("Zotero: cannot create Kindle documents folder: " .. tostring(err))
+                end
+            end
+            if lfs.attributes(zotero_documents_dir, "mode") == "directory" then
+                API.storage_dir = BaseUtil.joinPath(zotero_documents_dir, "storage")
+            end
+        end
+    end
     if not file_exists(API.storage_dir) then
-        lfs.mkdir(API.storage_dir)
+        local ok, err = lfs.mkdir(API.storage_dir)
+        if not ok then
+            error("Zotero: cannot create attachment storage directory: " .. tostring(err))
+        end
     end
 
-    logger.dbg("Zotero: storage dir" .. API.storage_dir)
+    logger.info("Zotero: attachment storage directory: " .. API.storage_dir)
 
     API.db_path = BaseUtil.joinPath(API.zotero_dir, "zotero.db")
     logger.info("Zotero: opening db path ", API.db_path)
@@ -882,6 +932,9 @@ function API.collectSearchRoots()
         add(r)
     end
     add(API.storage_dir)
+    if API.legacy_storage_dir and API.legacy_storage_dir ~= API.storage_dir then
+        add(API.legacy_storage_dir)
+    end
     return roots
 end
 
@@ -1080,6 +1133,9 @@ function API.isSupportedAttachmentLinkMode(linkMode)
 end
 
 local function isCachedAttachmentCurrent(targetPath, item)
+    -- Reject locally cached HTTP error bodies and truncated files.
+    local valid = FileValidation.isValid(targetPath, item)
+    if not valid then return false end
     local file_ts = lfs.attributes(targetPath, "modification")
     if not file_ts then
         return false
@@ -1122,7 +1178,7 @@ function API.resolveAttachmentPath(item)
             local ext_dir = API.getExternalStorageDir()
             if ext_dir ~= "" and item.data.filename then
                 local ext_path = API.normalizePath(BaseUtil.joinPath(ext_dir, item.key, item.data.filename))
-                if file_exists(ext_path) then
+                if FileValidation.isValid(ext_path, item) then
                     if isCachedAttachmentCurrent(ext_path, item) or allow_stale then
                         logger.dbg("Zotero: resolved external storage at " .. ext_path)
                         return ext_path
@@ -1139,7 +1195,7 @@ function API.resolveAttachmentPath(item)
             end
         end
         local _, targetPath = API.getDirAndPath(item)
-        if targetPath and file_exists(targetPath) then
+        if targetPath and FileValidation.isValid(targetPath, item) then
             if isCachedAttachmentCurrent(targetPath, item) or allow_stale then
                 logger.dbg("Zotero: resolved plugin storage at " .. targetPath)
                 return targetPath
@@ -1148,7 +1204,7 @@ function API.resolveAttachmentPath(item)
         -- basename search fallback
         if item.data.filename then
             local found = API.findAttachmentByBasename(item.data.filename)
-            if found then
+            if found and FileValidation.isValid(found, item) then
                 logger.dbg("Zotero: resolved imported file by basename at " .. found)
                 return found
             end
@@ -1529,13 +1585,20 @@ function API.checkZoteroKey(page_url, headers)
             local sql = "SELECT userID FROM libraries WHERE libraryID=1;"
             local uID = db:rowexec(sql)
             if uID == 0 then
-                -- userID has not been set yet. Should only happed for first ever sync...
-                sql = ('UPDATE libraries SET userID=%i, name="%s", editable=%i WHERE libraryID=1;'):format(
-                    result.userID,
-                    result.username,
-                    0
+                -- First synchronization: store the username as a bound SQL
+                -- string value. Double quotes in SQLite name="username" can
+                -- be interpreted as an identifier, raising "no such column"
+                -- on a newly initialized Kindle database.
+                local zotero_user_id = tonumber(result.userID)
+                local zotero_username = result.username
+                if not zotero_user_id or type(zotero_username) ~= "string" then
+                    return nil, "Zotero API returned invalid account information"
+                end
+                local stmt = db:prepare(
+                    "UPDATE libraries SET userID = ?, name = ?, editable = ? WHERE libraryID = 1;"
                 )
-                db:rowexec(sql)
+                stmt:reset():bind(zotero_user_id, zotero_username, 0):step()
+                stmt:close()
             else
                 -- should check that it is still the same user library and that we have sufficient access...
             end
@@ -1608,13 +1671,13 @@ function API.fetchCollectionPaginated(collection_url, headers, callback)
         end
         library_version = header["last-modified-version"]
 
-        local percentage = 100 * item_nr / collection_size
-        if collection_size == 0 then
-            percentage = 100
-        end
+        -- The progress number describes successfully received entries,
+        -- not merely the offset requested from Zotero.
+        local processed = math.min(item_nr + #result, collection_size)
+        local percentage = collection_size == 0 and 100 or 100 * processed / collection_size
 
         if callback then
-            callback(result, percentage)
+            callback(result, percentage, processed, collection_size)
         else
             -- add items to the list we return in the end
             table.move(result, 1, #result, #items + 1, items)
@@ -1622,9 +1685,9 @@ function API.fetchCollectionPaginated(collection_url, headers, callback)
     end
 
     if callback then
-        return library_version, nil
+        return library_version, nil, collection_size
     else
-        return items, nil
+        return items, nil, collection_size
     end
 end
 
@@ -1764,8 +1827,7 @@ function API.fetchZoteroItems(since, progress_callback)
 
     local annotationTypes = Annotations.supportedZoteroTypes()
 
-    local r, e = API.fetchCollectionPaginated(items_url, headers, function(partial_entries, percentage)
-        callback(string.format("Syncing items %.0f%%", percentage))
+    local r, e, expected_item_count = API.fetchCollectionPaginated(items_url, headers, function(partial_entries, percentage, processed, total)
         for i = 1, #partial_entries do
             -- Ruthlessly update our local items
             local item = partial_entries[i]
@@ -1817,6 +1879,9 @@ function API.fetchZoteroItems(since, progress_callback)
                 end
             end
         end
+        -- Report *after* processing the page. The old 0% message appeared
+        -- before any page was committed, which was confusing on slow Kindles.
+        callback(string.format("Items: %d/%d (%.0f%%)", processed, total, percentage))
     end)
 
     -- next is used to check whether table has entries.
@@ -1842,6 +1907,7 @@ function API.fetchZoteroItems(since, progress_callback)
     if e ~= nil then
         return e
     end
+    return nil, expected_item_count
 end
 
 -- Fetch (new) collections from Zotero server and organise them into the local sqlite database
@@ -1876,8 +1942,7 @@ function API.fetchZoteroCollections(since, progress_callback)
     local nestedCollections = {}
     local nCnt = 0
 
-    local r, e = API.fetchCollectionPaginated(collections_url, headers, function(partial_entries, percentage)
-        callback(string.format("Syncing collections %.0f%%", percentage))
+    local r, e, expected_collection_count = API.fetchCollectionPaginated(collections_url, headers, function(partial_entries, percentage, processed, total)
         for i = 1, #partial_entries do
             -- Ruthlessly update our local items
             local collection = partial_entries[i].data
@@ -1916,6 +1981,7 @@ function API.fetchZoteroCollections(since, progress_callback)
                 end
             end
         end
+        callback(string.format("Collections: %d/%d (%.0f%%)", processed, total, percentage))
     end)
     stmt_update_collection:close()
 
@@ -1929,7 +1995,7 @@ function API.fetchZoteroCollections(since, progress_callback)
         end
         stmt_update_parentCollection:close()
     end
-    return r, e
+    return r, e, expected_collection_count
 end
 
 -- Sync local db with zotero server
@@ -1953,6 +2019,7 @@ function API.syncAllItems(progress_callback)
     local since = API.getUserLibraryVersion()
     --logger.info("Local Zotero lib version: "..since)
 
+    callback("Step 1/4: verifying Zotero API access...")
     -- verify access
     local e = API.verifyZoteroAccess()
     if e ~= nil then
@@ -1990,19 +2057,41 @@ function API.syncAllItems(progress_callback)
 	end
 	--]]
 
-    local r, e = API.fetchZoteroCollections(since, progress_callback)
+    callback("Step 2/4: requesting Zotero collections...")
+    local r, e, expected_collections = API.fetchZoteroCollections(since, function(status)
+        callback("Step 2/4: " .. status)
+    end)
     if e ~= nil then
         return e
     end
 
-    e = API.fetchZoteroItems(since, callback)
+    callback("Step 3/4: requesting Zotero items...")
+    local expected_items
+    e, expected_items = API.fetchZoteroItems(since, function(status)
+        callback("Step 3/4: " .. status)
+    end)
     if e ~= nil then
         return e
     end
 
+    -- On an incomplete Kindle database INSERT...SELECT could silently save
+    -- nothing. Do not mark the first sync complete in that situation.
+    if since == 0 then
+        local stored_collections = tonumber(db:rowexec("SELECT COUNT(*) FROM collections;")) or 0
+        local stored_items = tonumber(db:rowexec("SELECT COUNT(*) FROM items;")) or 0
+        if (expected_collections or 0) > 0 and stored_collections <= 1 then
+            return "Zotero sync did not save downloaded collections (SQLite database incomplete)."
+        end
+        if (expected_items or 0) > 0 and stored_items == 0 then
+            return "Zotero sync did not save downloaded items (SQLite database incomplete)."
+        end
+    end
     API.setUserLibraryVersion(r)
 
-    local download_fails, failed_downloads = API.batchDownload(callback)
+    callback("Step 4/4: checking offline collection downloads...")
+    local download_fails, failed_downloads = API.batchDownload(function(status)
+        callback("Step 4/4: " .. status)
+    end)
     sync_stats.file_download_fails = download_fails or 0
     sync_stats.failed_downloads = failed_downloads or {}
 
@@ -2250,6 +2339,25 @@ function API.downloadAndGetPath(key, download_callback)
         return localPath, nil
     end
 
+    -- Optional on-demand Dropbox fallback, after local lookup and before Zotero Storage.
+    -- Read-only Dropbox access; normal Zotero file download remains the fallback.
+    if item.data.linkMode == "imported_file" or item.data.linkMode == "imported_url" then
+        local cache_dir, cache_path = API.getDirAndPath(item)
+        local retrieved, attempted, dropbox_error = DropboxBridge.tryDownload(item, cache_dir, cache_path)
+        if retrieved then
+            API.getAttachmentInfo(item, retrieved)
+            local attached, attach_err = pcall(API.attachItemAnnotations, item, nil, retrieved)
+            if not attached then
+                logger.warn("Zotero Atelier Dropbox: annotation read failed: " .. tostring(attach_err))
+            end
+            API.setAttachmentVersionByKey(key, item.version)
+            return retrieved, nil
+        end
+        if attempted and dropbox_error then
+            logger.warn("Zotero Atelier Dropbox: " .. tostring(dropbox_error))
+        end
+    end
+
     if item.data.linkMode == "linked_file" then
         return nil,
             "Error: linked file not found locally. Check linked files folder and path mappings in Zotero settings."
@@ -2263,8 +2371,9 @@ function API.downloadAndGetPath(key, download_callback)
     local downloadRequired = true
 
     local targetDir, targetPath = API.getDirAndPath(item)
-    local file_ts = lfs.attributes(targetPath, "modification")
-    if file_ts then -- file already exists locally
+    local existing_valid = FileValidation.isValid(targetPath, item)
+    local file_ts = existing_valid and lfs.attributes(targetPath, "modification")
+    if file_ts then -- a valid file already exists locally
         -- get local file version from doc settings file
         local docSettings = DocSettings:open(targetPath)
         local libVersionAtLastSync = docSettings:readSetting("zoteroLibVersion", 0)
@@ -2305,19 +2414,68 @@ function API.downloadAndGetPath(key, download_callback)
             local url = API.userLibraryURL .. "/items/" .. key .. "/file"
             logger.dbg("Zotero: fetching " .. url)
 
-            local r, c, h = https.request({
-                url = url,
-                headers = API.zoteroHeader,
-                sink = ltn12.sink.file(io.open(targetPath, "wb")),
-            })
-
-            errormsg = API.verifyResponse(r, c)
+            -- Always download to a temporary file. Zotero Storage may
+            -- return a short text error body such as "Not Found"; writing
+            -- directly to targetPath would poison local offline reopening.
+            local tmp_path = targetPath .. ".zotero-part"
+            local out, open_error = io.open(tmp_path, "wb")
+            if not out then
+                errormsg = "Cannot create Zotero temporary download: " .. tostring(open_error)
+            else
+                local ok_request, r, c = pcall(https.request, {
+                    url = url,
+                    headers = API.zoteroHeader,
+                    sink = ltn12.sink.file(out),
+                })
+                pcall(function() out:close() end)
+                if not ok_request then
+                    errormsg = "Zotero file download failed during HTTPS request"
+                else
+                    errormsg = API.verifyResponse(r, c)
+                end
+                if not errormsg then
+                    local valid, reason = FileValidation.isValid(tmp_path, item)
+                    if not valid then
+                        errormsg = "Zotero Storage supplied an invalid attachment: " .. tostring(reason)
+                    end
+                end
+                if not errormsg then
+                    -- Save an invalid previous file rather than silently
+                    -- destroying the evidence. Preserve .sdr reading data.
+                    local backup
+                    if lfs.attributes(targetPath, "mode") == "file"
+                       and not FileValidation.isValid(targetPath, item) then
+                        backup = targetPath .. ".invalid-backup"
+                        local n = 1
+                        while lfs.attributes(backup) and n < 100 do
+                            backup = targetPath .. ".invalid-backup-" .. tostring(n)
+                            n = n + 1
+                        end
+                        if lfs.attributes(backup) then
+                            errormsg = "Too many invalid attachment backups"
+                        else
+                            local moved, move_error = os.rename(targetPath, backup)
+                            if not moved then
+                                errormsg = "Cannot save invalid attachment backup: " .. tostring(move_error)
+                            end
+                        end
+                    end
+                    if not errormsg then
+                        local replaced, replace_error = os.rename(tmp_path, targetPath)
+                        if not replaced then
+                            if backup then os.rename(backup, targetPath) end
+                            errormsg = "Cannot publish validated Zotero download: " .. tostring(replace_error)
+                        end
+                    end
+                end
+                if errormsg then os.remove(tmp_path) end
+            end
         end
         if errormsg then
             if file_ts then
-                logger.warn("Zotero: Failed to download updated attachtment version. Using local copy!")
+                logger.warn("Zotero: failed to update attachment. Keeping valid local file.")
             else
-                logger.warn("Zotero: Failed to download attachtment")
+                logger.warn("Zotero: download failed, no valid local attachment available")
                 return nil, errormsg
             end
         end
@@ -2396,6 +2554,9 @@ function API.batchDownload(progress_callback)
     local result, item_count = stmt:reset():resultset()
 
     logger.info("Zotero:", item_count, "offline items to download")
+    if item_count == 0 then
+        progress_callback("No attachments queued for offline collections (0/0).")
+    end
 
     -- Track download failures
     local download_fails = 0
@@ -2404,8 +2565,12 @@ function API.batchDownload(progress_callback)
     for i = 1, item_count do
         local download_key = result[1][i]
         local filename = result[2][i]
-        progress_callback(string.format(_("Downloading attachment %i/%i"), i, item_count))
+        progress_callback(string.format("Downloading attachment %d/%d (%.0f%% complete before this file)",
+            i, item_count, 100 * (i - 1) / item_count))
         local path, e = API.downloadAndGetPath(download_key, nil)
+        if e == nil then
+            progress_callback(string.format("Attachments: %d/%d (%.0f%%)", i, item_count, 100 * i / item_count))
+        end
 
         if e ~= nil then
             progress_callback(string.format(_("Error downloading attachment %s: %s"), filename, e))
@@ -3041,6 +3206,15 @@ end
 
 function API.scanStorage()
     local zotItems, extraDirs = API.scanStorageDir(API.storage_dir, false)
+    if API.legacy_storage_dir and API.legacy_storage_dir ~= API.storage_dir then
+        -- Legacy cached books remain discoverable if the USB migration has
+        -- not yet been run (or if it was intentionally skipped).
+        local oldItems, oldExtra = API.scanStorageDir(API.legacy_storage_dir, true)
+        zotItems = zotItems + oldItems
+        for _, d in ipairs(oldExtra) do
+            table.insert(extraDirs, d)
+        end
+    end
     if API.getExternalStorageEnabled() then
         local ext_dir = API.getExternalStorageDir()
         if ext_dir ~= "" then

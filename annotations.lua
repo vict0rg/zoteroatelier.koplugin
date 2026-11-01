@@ -169,8 +169,30 @@ function Annotations.annotationTypeKOReaderToZotero(type)
     return K2Z_STYLE[string.lower(type)]
 end
 
+-- Accept both KOReader page representations (pageno/page), as newer
+-- upstream Zotero Atelier does. Some annotations have only page (crash.log:
+-- makeSortIndex(nil) on a previously highlighted PDF page).
+function Annotations.getAnnotationPage(annotation)
+    if annotation == nil then
+        return 1
+    end
+    local page = tonumber(annotation.pageno) or tonumber(annotation.page)
+    if page == nil and annotation.pos0 then
+        page = tonumber(annotation.pos0.page) or tonumber(annotation.pos0.pageno)
+    end
+    if page == nil and annotation.pos1 then
+        page = tonumber(annotation.pos1.page) or tonumber(annotation.pos1.pageno)
+    end
+    if page == nil or page < 1 then
+        return 1
+    end
+    return math.floor(page)
+end
+
 -- Generate a annotationSortIndex based on page, offset and miny
 function Annotations.makeSortIndex(page, offset, miny)
+    page = tonumber(page) or 1
+    if page < 1 then page = 1 end
     local zoteroSortIndex = string.format("%05d|%06d|%05d", page - 1, offset, math.max(0, math.floor(miny)))
     return zoteroSortIndex
 end
@@ -178,9 +200,10 @@ end
 -- Convert KOReader annotation to Zotero format
 -- page_bbox: table with bbox info for this specific page (from getPageDimensions)
 function Annotations.convertKOReaderToZotero(annotation, page_bbox, parent_key)
+    local page_no = Annotations.getAnnotationPage(annotation)
     logger.info("=== SENDING ANNOTATION TO ZOTERO ===")
     logger.info("Local KOReader annotation data:")
-    logger.info("  Page number: " .. (annotation.pageno or annotation.page or "nil"))
+    logger.info("  Page number: " .. tostring(page_no))
     logger.info("  Drawer type: " .. (annotation.drawer or "nil"))
     logger.info("  Color: " .. (annotation.color or "nil"))
     logger.info("  Text: " .. (annotation.text or ""))
@@ -273,12 +296,12 @@ function Annotations.convertKOReaderToZotero(annotation, page_bbox, parent_key)
     -- make 'fake' sort key
     -- middle parameter should be offset (number of characters on page before the highlighted text?)
     -- we don't know this
-    local zoteroSortIndex = Annotations.makeSortIndex(annotation.pageno, 0, miny)
+    local zoteroSortIndex = Annotations.makeSortIndex(page_no, 0, miny)
 
     logger.info("")
     logger.info("Sort index calculation:")
     logger.info(
-        string.format("  makeSortIndex(page=%d, offset=0, miny=%.2f) -> '%s'", annotation.pageno, miny, zoteroSortIndex)
+        string.format("  makeSortIndex(page=%d, offset=0, miny=%.2f) -> '%s'", page_no, miny, zoteroSortIndex)
     )
 
     local ZAnnotation = {
@@ -286,10 +309,10 @@ function Annotations.convertKOReaderToZotero(annotation, page_bbox, parent_key)
         ["parentItem"] = parent_key,
         ["annotationType"] = type,
         ["annotationColor"] = color,
-        ["annotationPageLabel"] = tostring(annotation.page),
+        ["annotationPageLabel"] = tostring(annotation.page or page_no),
         ["annotationSortIndex"] = zoteroSortIndex,
         ["annotationPosition"] = JSON.encode({
-            ["pageIndex"] = annotation.pageno - 1,
+            ["pageIndex"] = page_no - 1,
             ["rects"] = rects,
         }),
         ["dateModified"] = date,
@@ -632,9 +655,7 @@ function Annotations.createAnnotations(file_path, key, creation_callback)
         -- gather page numbers beforehand so that we may determine page sizes in a
         -- single go
         for i = 1, #k_annotations do
-            local pageno = k_annotations[i].pageno or
-                k_annotations[i]
-                .page -- not sure what is the difference between page and pageno
+            local pageno = Annotations.getAnnotationPage(k_annotations[i])
             pages[pageno] = true
         end
 
@@ -655,7 +676,7 @@ function Annotations.createAnnotations(file_path, key, creation_callback)
     logger.info("Annotations.createAnnotations: Processing " .. #k_annotations .. " annotations")
     for i = 1, #k_annotations do
         if (k_annotations[i].zoteroKey == nil) and (k_annotations[i].drawer ~= nil) then
-            local pageno = k_annotations[i].pageno or k_annotations[i].page
+            local pageno = Annotations.getAnnotationPage(k_annotations[i])
             if is_pdf then
                 local page_bbox = page_dimensions[pageno]
                 if page_bbox == nil then
@@ -734,7 +755,7 @@ function Annotations.updateAnnotations(file_path, key, update_callback, get_item
                 remote = get_item_callback(ann.zoteroKey)
             end
             if remote and Annotations.annotationNeedsUpdate(ann, remote) then
-                local pageno = ann.pageno or ann.page
+                local pageno = Annotations.getAnnotationPage(ann)
                 if is_pdf and pageno then
                     pages[pageno] = true
                 end
@@ -760,7 +781,7 @@ function Annotations.updateAnnotations(file_path, key, update_callback, get_item
         local ann = entry.ann
         local payload
         if is_pdf then
-            local pageno = ann.pageno or ann.page
+            local pageno = Annotations.getAnnotationPage(ann)
             local page_bbox = page_dimensions[pageno]
             if page_bbox == nil then
                 logger.err("Annotations.updateAnnotations: No BBOX for page " .. tostring(pageno))

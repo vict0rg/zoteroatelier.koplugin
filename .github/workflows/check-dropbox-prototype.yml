@@ -1,0 +1,57 @@
+name: Experimental Dropbox syntax checks
+
+on:
+  push:
+    branches:
+      - feature/dropbox-on-demand
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lua 5.1 compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.1
+      - name: Check KOReader Lua syntax
+        run: |
+          luac5.1 -p annotation_panel.lua
+          luac5.1 -p _meta.lua
+          luac5.1 -p annotations.lua
+          luac5.1 -p tools/test_annotation_page.lua
+          luac5.1 -p zoteroapi.lua
+          luac5.1 -p zotero_dropbox.lua
+          luac5.1 -p zotero_file_validation.lua
+          luac5.1 -p main.lua
+          luac5.1 -p zotero_storage_manager.lua
+          luac5.1 -p tools/test_storage_manager_read_only.lua
+          luac5.1 -p tools/test_storage_manager_cleanup.lua
+      - name: Regress PDF annotation page-only conversion without network access
+        run: |
+          lua5.1 tools/test_annotation_page.lua
+      - name: Exercise safe per-file Kindle removal with two confirmations and no real filesystem
+        run: |
+          lua5.1 tools/test_storage_manager_cleanup.lua
+      - name: Check OAuth helper and installation shell script syntax
+        run: |
+          python3 -m py_compile tools/configurar_dropbox_oauth.py
+          bash -n tools/testar_flatpak.sh
+          bash -n tools/atualizar_progresso_kindle.sh
+          bash -n tools/mover_storage_para_documents_kindle.sh
+          bash -n tools/instalar_gerenciador_espaco_kindle.sh
+          bash -n tools/corrigir_storage_duplo_kindle.sh
+          bash -n tools/corrigir_download_pdf_kindle.sh
+          bash -n tools/desativar_limpeza_kindle.sh
+          bash -n tools/testar_relatorio_espaco_kindle.sh
+          bash -n tools/corrigir_espaco_livre_kindle.sh
+          bash -n tools/instalar_selecao_individual_kindle.sh
+          bash -n tools/instalar_exclusao_individual_kindle.sh
+          bash -n tools/ativar_exclusao_individual_kindle.sh
+          bash -n tools/restaurar_selecao_sem_exclusao_kindle.sh
+          bash -n tools/atualizar_atelier_kindle_anotacoes_2026-11-01.sh

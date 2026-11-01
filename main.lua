@@ -14,6 +14,8 @@ local Menu = require("ui/widget/menu")
 local Geom = require("ui/geometry")
 local _ = require("gettext")
 local ZoteroAPI = require("zoteroapi")
+local DropboxBridge = require("zotero_dropbox")
+local StorageManager = require("zotero_storage_manager")
 local itemInfoViewer = require("zoteroiteminfo")
 local AnnotationPanel = require("annotation_panel")
 local AnnotationSearch = require("annotation_search")
@@ -567,6 +569,24 @@ function Plugin:getZoteroSubMenu()
                         end,
                     },
                     {
+                        -- Per-file deletion is guarded by two confirmations
+                        -- and filesystem preflight inside the storage manager.
+                        -- Keep runtime errors from terminating KOReader.
+                        text = _("Zotero storage and cleanup"),
+                        callback = function()
+                            local ok, err = xpcall(function()
+                                StorageManager.show(self)
+                            end, debug.traceback)
+                            if not ok then
+                                logger.err("Zotero storage report failed: ", tostring(err))
+                                UIManager:show(InfoMessage:new({
+                                    text = _("Storage report failed. Your books are safe; check KOReader crash.log."),
+                                    icon = "notice-warning",
+                                }))
+                            end
+                        end,
+                    },
+                    {
                         text = _("Resync entire collection"),
                         callback = function()
                             ZoteroAPI.resetSyncState()
@@ -586,6 +606,55 @@ function Plugin:getZoteroSubMenu()
                         callback = function()
                             self:setAccount()
                         end,
+                    },
+
+                    {
+                        text = _("Configure Dropbox account"),
+                        callback = function()
+                            return nil
+                        end,
+                        sub_item_table = {
+                            {
+                                text = _("Dropbox app and storage folder"),
+                                callback = function()
+                                    self:setDropboxAccount()
+                                end,
+                            },
+                            {
+                                text = _("Authorize Dropbox (QR code)"),
+                                callback = function()
+                                    self:showDropboxAuthorization()
+                                end,
+                            },
+                            {
+                                text = _("Enter Dropbox authorization code"),
+                                callback = function()
+                                    self:finishDropboxAuthorization()
+                                end,
+                            },
+                            {
+                                text = _("Enable Dropbox downloads"),
+                                checked_func = function()
+                                    return DropboxBridge.getStatus().enabled
+                                end,
+                                callback = function()
+                                    local status = DropboxBridge.getStatus()
+                                    local ok, err = DropboxBridge.setEnabled(not status.enabled)
+                                    if not ok then
+                                        UIManager:show(InfoMessage:new({
+                                            text = err or _("Cannot change Dropbox setting."),
+                                            icon = "notice-warning",
+                                        }))
+                                    end
+                                end,
+                            },
+                            {
+                                text = _("Dropbox connection status"),
+                                callback = function()
+                                    self:showDropboxStatus()
+                                end,
+                            },
+                        },
                     },
                     {
                         text = _("Enable WebDAV storage"),
@@ -934,6 +1003,132 @@ function Plugin:setWebdavAccount()
     self.webdav_account_dialog:onShowKeyboard()
 end
 
+
+-- Dropbox is integrated into Zotero Atelier: no second KOReader plugin needed.
+-- Only metadata (App key and Dropbox storage root) are editable in this dialog.
+-- The refresh token is acquired through PKCE and never shown on screen.
+function Plugin:setDropboxAccount()
+    local cfg = DropboxBridge.getStatus()
+    local dialog
+    dialog = MultiInputDialog:new({
+        title = _("Configure Dropbox account"),
+        fields = {
+            {text = cfg.app_key, hint = _("Dropbox developer App key")},
+            {text = cfg.storage_root, hint = _("Dropbox remote storage folder (/.../storage)")},
+        },
+        buttons = {
+            {
+                {
+                    text = _("Cancel"),
+                    id = "close",
+                    callback = function()
+                        dialog:onClose()
+                        UIManager:close(dialog)
+                    end,
+                },
+                {
+                    text = _("Save"),
+                    callback = function()
+                        local fields = dialog:getFields()
+                        local ok, err = DropboxBridge.saveAccount(fields[1], fields[2])
+                        if not ok then
+                            UIManager:show(InfoMessage:new({
+                                text = err or _("Could not save Dropbox configuration."),
+                                icon = "notice-warning",
+                            }))
+                            return
+                        end
+                        dialog:onClose()
+                        UIManager:close(dialog)
+                        UIManager:show(InfoMessage:new({
+                            text = _("Dropbox path saved. Next: Authorize Dropbox (QR code)."),
+                        }))
+                    end,
+                },
+            },
+        },
+    })
+    UIManager:show(dialog)
+    dialog:onShowKeyboard()
+end
+
+function Plugin:showDropboxAuthorization()
+    local url, err = DropboxBridge.startAuthorization()
+    if not url then
+        UIManager:show(InfoMessage:new({
+            text = err or _("Configure Dropbox account first."),
+            icon = "notice-warning",
+        }))
+        return
+    end
+    local QRMessage = require("ui/widget/qrmessage")
+    local side = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.86)
+    UIManager:show(QRMessage:new({
+        text = url,
+        width = side,
+        height = side,
+        dismiss_callback = function()
+            UIManager:show(InfoMessage:new({
+                text = _("After approving Dropbox in your browser, return to Zotero Atelier > Settings > Configure Dropbox account > Enter Dropbox authorization code."),
+            }))
+        end,
+    }))
+end
+
+function Plugin:finishDropboxAuthorization()
+    local dialog
+    dialog = InputDialog:new({
+        title = _("Enter Dropbox authorization code"),
+        input = "",
+        input_hint = _("Code displayed after approving Dropbox"),
+        buttons = {
+            {
+                {
+                    text = _("Cancel"),
+                    callback = function()
+                        UIManager:close(dialog)
+                    end,
+                },
+                {
+                    text = _("Connect"),
+                    is_enter_default = true,
+                    callback = function()
+                        local code = dialog:getInputText()
+                        if not code or code == "" then return end
+                        UIManager:close(dialog)
+                        NetworkMgr:runWhenOnline(function()
+                            local ok, err = DropboxBridge.finishAuthorization(code)
+                            if ok then
+                                UIManager:show(InfoMessage:new({
+                                    text = _("Dropbox authorization saved. On-demand downloads are enabled."),
+                                    icon = "notice-info",
+                                }))
+                            else
+                                UIManager:show(InfoMessage:new({
+                                    text = err or _("Dropbox authorization failed."),
+                                    icon = "notice-warning",
+                                }))
+                            end
+                        end)
+                    end,
+                },
+            },
+        },
+    })
+    UIManager:show(dialog)
+    dialog:onShowKeyboard()
+end
+
+function Plugin:showDropboxStatus()
+    local status = DropboxBridge.getStatus()
+    local text = _("Dropbox App key: ") .. (status.app_key ~= "" and _("configured") or _("missing"))
+        .. "\n" .. _("Remote folder: ") .. (status.storage_root ~= "" and status.storage_root or _("not set"))
+        .. "\n" .. _("Authorization saved: ") .. (status.authorized and _("yes") or _("no"))
+        .. "\n" .. _("On-demand downloads: ") .. (status.enabled and _("enabled") or _("disabled"))
+        .. "\n\n" .. _("Authorization status is local; open one Zotero attachment to test the Dropbox connection.")
+    UIManager:show(InfoMessage:new({text = text}))
+end
+
 function Plugin:chooseDirectory(setting_key, title, on_path_chosen)
     local current = ZoteroAPI.getSettings():readSetting(setting_key, "") or ""
     local start_dir = current
@@ -1255,23 +1450,89 @@ function Plugin:onZoteroBrowserAction()
     self.browser:displayCollection(nil)
 end
 
+-- Synchronization is a linear, network-bound job. A standard Trapper:info()
+-- popup can be dismissed with a tap, making the initial sync look finished
+-- while the local library is still empty. Keep a non-dismissible status visible
+-- until the job finishes, and persist its latest *non-secret* phase for diagnosis.
 function Plugin:onZoteroSyncAction()
     if not self:checkInitialized() then
         return
     end
+    if self.zotero_sync_in_progress then
+        UIManager:show(InfoMessage:new({
+            text = _("Zotero synchronization is still running. Please wait."),
+            timeout = 5,
+        }))
+        return
+    end
     NetworkMgr:runWhenOnline(function()
-        Trapper:wrap(function()
-            Trapper:info("Synchronizing Zotero library.")
-            local e = ZoteroAPI.syncAllItems(function(msg)
-                Trapper:info(msg)
-            end)
+        if self.zotero_sync_in_progress then return end
+        self.zotero_sync_in_progress = true
 
-            if e == nil then
-                Trapper:info("Success")
-            else
-                Trapper:info(e)
+        local dialog, previous_status, last_safe_status
+        local status_file = DataStorage:getDataDir() .. "/zotero/sync_status.txt"
+        local function saveStatus(message)
+            -- No credentials, Dropbox paths, document titles or HTTP headers.
+            local file = io.open(status_file, "wb")
+            if file then
+                file:write(os.date("!%Y-%m-%dT%H:%M:%SZ"), "\n", message, "\n")
+                file:close()
             end
-        end)
+        end
+        local function progress(message)
+            message = tostring(message or _("Working..."))
+            if message == previous_status then return end
+            previous_status = message
+            -- Keep filenames and server error details out of the diagnostic file.
+            if message:find("Error downloading attachment", 1, true) then
+                last_safe_status = "Step 4/4: attachment download failed"
+            else
+                last_safe_status = message
+            end
+            saveStatus(last_safe_status)
+
+            if dialog then
+                UIManager:close(dialog)
+            end
+            dialog = InfoMessage:new({
+                text = _("Zotero synchronization in progress") .. "\n\n" .. message
+                    .. "\n\n" .. _("Please wait; the library will be available when synchronization finishes."),
+                icon = "notice-info",
+                -- Tapping the progress message must not hide it and leave the
+                -- user looking at an incomplete/empty Zotero browser.
+                dismissable = false,
+            })
+            UIManager:show(dialog)
+            UIManager:forceRePaint()
+        end
+
+        local ok, result = xpcall(function()
+            progress(_("Preparing Zotero library..."))
+            return ZoteroAPI.syncAllItems(progress)
+        end, debug.traceback)
+
+        if dialog then
+            UIManager:close(dialog)
+        end
+        self.zotero_sync_in_progress = false
+
+        local final_message
+        if not ok then
+            logger.err("Zotero synchronization failed: ", result)
+            final_message = _("Zotero synchronization failed. Check the KOReader log.")
+            saveStatus("FAILED after: " .. (last_safe_status or "unknown step") .. " (see KOReader log)")
+        elseif result ~= nil then
+            final_message = _("Zotero synchronization finished with warnings:") .. "\n" .. tostring(result)
+            saveStatus("FINISHED WITH WARNINGS")
+        else
+            final_message = _("Zotero synchronization completed. You can now browse the library.")
+            saveStatus("COMPLETED")
+        end
+        UIManager:show(InfoMessage:new({
+            text = final_message,
+            icon = (ok and result == nil) and "notice-info" or "notice-warning",
+            timeout = 12,
+        }))
     end)
 end
 
