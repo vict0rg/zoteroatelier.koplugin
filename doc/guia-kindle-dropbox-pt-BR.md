@@ -1,4 +1,7 @@
-# Guia de uso — Zotero Atelier + Dropbox no KOReader
+# Guia de uso — Zotero Atelier Drop Sync no KOReader
+
+> **ATUALIZAÇÃO 01/11/2026 — Projeto Zotero Atelier Drop Sync:** agora a branch principal é `master` e preserva a integração com Dropbox. Foi incorporada a correção de página ausente em destaques PDF. Para a instalação já configurada no Kindle, consulte o [instalador pontual com backup](../tools/atualizar_atelier_kindle_anotacoes_2026-11-01.sh) e a [auditoria de alterações upstream](atualizacao-upstream-2026-11-01.md). Não reinstale o plugin completo nem apague a biblioteca para resolver esse erro.
+
 
 **Estado em 11/10/2026:** integração experimental. A autorização do Dropbox e a abertura de **um PDF e um EPUB** foram confirmadas no **KOReader Flatpak / Linux Mint**. **No Kindle Oasis, após corrigir a inicialização do SQLite, o usuário confirmou que a sincronização passou a funcionar e conseguiu abrir um artigo e um livro EPUB pelo Zotero Atelier.** **A reabertura sem Wi-Fi já foi confirmada:** os anexos permaneceram no diretório `storage` local do Kindle e abriram normalmente offline. A confirmação independente da origem de download de cada arquivo ainda não foi feita.
 
