@@ -383,19 +383,39 @@ function Plugin:syncOpenDocumentAnnotations(readerui, opts)
         end)
         local total_fails = (tonumber(upload_fails) or 0)
             + (tonumber(delete_fails) or 0) + (tonumber(update_fails) or 0)
-        if not ok or total_fails > 0 then
+        local pulled, changed, pull_count = false, false, 0
+        local pull_error = nil
+        if opts.pull then
+            local pull_call_ok, good, did_change, num = pcall(
+                ZoteroAPI.pullAnnotationsForAttachment, key, file_path)
+            pulled = pull_call_ok and good == true
+            if pulled then
+                changed = did_change == true
+                pull_count = tonumber(num) or 0
+                if changed and readerui.document and readerui.document.file == file_path then
+                    self:reloadReaderAnnotations(readerui)
+                end
+            else
+                pull_error = pull_call_ok and tostring(did_change) or tostring(good)
+                logger.err("Zotero: remote annotation pull failed: ", pull_error)
+            end
+        end
+        if not ok or total_fails > 0 or (opts.pull and not pulled) then
             logger.err("Zotero: document annotation upload did not fully complete; "
                 .. "fails=" .. tostring(total_fails) .. ", detail=" .. tostring(upload_fails))
             if opts.notify then
                 UIManager:show(InfoMessage:new({
-                    text = _("Annotation upload incomplete. Local highlights preserved; check the KOReader log."),
+                    text = _("Annotation synchronization incomplete. Local highlights preserved; check KOReader log.")
+                        .. (pull_error and ("\n" .. pull_error) or ""),
                     timeout = 6,
                     icon = "notice-warning",
                 }))
             end
         elseif opts.notify then
             UIManager:show(InfoMessage:new({
-                text = _("Local annotations sent to Zotero. This does not fetch annotations from Zotero."),
+                text = opts.pull
+                    and _("Annotations sent and received from Zotero.") or
+                        _("Local annotations sent to Zotero."),
                 timeout = 5,
                 icon = "notice-info",
             }))
@@ -435,7 +455,7 @@ function Plugin:onReaderReady(readerui)
     end
     -- Upload local create/edit/delete shortly after open (sidecar may have pending changes)
     UIManager:scheduleIn(1.0, function()
-        self:syncOpenDocumentAnnotations(readerui, { notify = false })
+        self:syncOpenDocumentAnnotations(readerui, { notify = false, pull = true })
     end)
 end
 
@@ -550,7 +570,7 @@ function Plugin:getZoteroSubMenu()
                     return self.ui ~= nil and self.ui.document ~= nil
                 end,
                 callback = function()
-                    self:syncOpenDocumentAnnotations(self.ui, { notify = true })
+                    self:syncOpenDocumentAnnotations(self.ui, { notify = true, pull = true })
                 end,
             },
             {
@@ -1518,6 +1538,13 @@ function Plugin:onZoteroSyncAction()
             UIManager:close(dialog)
         end
         self.zotero_sync_in_progress = false
+
+        -- The catalogue sync refreshes the SQLite cache but not necessarily
+        -- the sidecar of the PDF currently open in KOReader. Explicitly pull
+        -- its annotation children as well; do not call this on document close.
+        if ok and self.ui and self.ui.document and self.ui.document.file then
+            self:syncOpenDocumentAnnotations(self.ui, {notify = false, pull = true})
+        end
 
         local final_message
         if not ok then
