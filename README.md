@@ -49,6 +49,28 @@ Se a montagem USB não for `/media/$USER/Kindle`, informe o caminho de montagem 
 
 Para instalações novas e configuração de Dropbox, consulte o [guia detalhado em português](doc/guia-kindle-dropbox-pt-BR.md). Configuração de credenciais: [documentação de desenvolvimento](doc/dropbox-on-demand.md). O módulo do Dropbox usa OAuth PKCE e permissão **`files.content.read`**, sem escrita no Dropbox.
 
+## Exclusões bidirecionais confirmadas (1º/11/2026)
+
+**Funcionalidade experimental de segurança** para PDFs e EPUBs. A versão anterior sincronizava criação de anotações, mas não exclusões, porque a implementação antiga havia removido indevidamente dezenas de destaques.
+
+Para evitar perdas, o novo módulo usa três regras:
+
+1. **Primeira sincronização depois da atualização:** apenas registra as chaves que realmente estão no Kindle **e** no Zotero. Nunca apaga nada; exclusões anteriores à instalação não são propagadas retroativamente.
+2. **Exclusão posterior no Kindle:** no próximo **Sync document annotations**, um destaque que estava registrado nos dois dispositivos e agora está ausente do Kindle torna-se candidato a remoção no Zotero. O plugin pede confirmação explícita na tela. O servidor é verificado novamente antes de um `DELETE`, protegido contra versões desatualizadas.
+3. **Exclusão posterior no Zotero:** o plugin só propõe remover do Kindle um destaque que estava confirmado nos dois dispositivos e que agora **também** retorna HTTP 404 em uma consulta individual ao Zotero. Uma caixa de confirmação deve ser aceita antes de remover a entrada do `.sdr`.
+
+**Falhas de rede, respostas vazias suspeitas e mais de 20 candidatas interrompem o processo sem exclusões em massa.** Uma cópia dos dados das anotações retiradas do Kindle permanece no campo `zoteroDeletedAnnotationArchiveV1` do `.sdr`. Esse arquivo de recuperação não deve ser editado manualmente. O instalador arquiva os diretórios `.sdr` existentes antes da atualização.
+
+**Instalar no Kindle já configurado com Dropbox** (KOReader totalmente fechado, Kindle montado via USB):
+
+```bash
+curl -fLsS https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/master/tools/instalar_exclusoes_confirmadas_kindle.sh -o ~/Downloads/instalar_exclusoes_confirmadas_kindle.sh && bash ~/Downloads/instalar_exclusoes_confirmadas_kindle.sh
+```
+
+**Validação recomendada:** em um PDF de testes, faça **Sync document annotations** uma vez para estabelecer a referência inicial. Depois apague **um** destaque no Zotero desktop, sincronize o Zotero com a nuvem, faça **Sync document annotations** no Kindle e aceite a confirmação. Faça o mesmo em sentido contrário com outro destaque: apague no Kindle e confirme a exclusão remota. Não use `Synchronize` (catálogo) para testar anotações.
+
+**Limites:** a rotina foi verificada em testes simulados de API e do ciclo de abertura/fechamento do KOReader, mas a remoção visual de destaques já gravados **dentro do PDF** pode requerer cuidado adicional; esta implementação altera o registro de anotações do KOReader (`.sdr`), não reescreve permanentemente o conteúdo binário do PDF. As duplicatas antigas não são removidas automaticamente. Não se deve considerar o recurso validado em um Kindle real antes de concluir os dois testes.
+
 ## Correção de duplicatas e recarga de PDFs — 01/11/2026
 
 **Problema identificado em uso real:** o Kindle baixava destaques existentes do Zotero, mas ao reabrir o PDF o KOReader gravava de volta suas anotações antigas em memória, substituindo as anotações recém-importadas. O plugin também enviava anotações no fechamento e durante a sincronização geral, criando novos itens no Zotero quando as chaves tinham sido perdidas.
