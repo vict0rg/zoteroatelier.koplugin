@@ -7,13 +7,13 @@ umask 077
 
 MOUNT="${KINDLE_MOUNT:-/media/$USER/Kindle}"
 PLUGIN="$MOUNT/koreader/plugins/zoteroatelier.koplugin"
-BASE="https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/c47fddd9ae55212d015167b00d759363072675de"
-BACKUP="$HOME/Downloads/BACKUP-ZOTERO-ATELIER-DUPLA-SYNC-$(date +%Y%m%d-%H%M%S)"
+BASE="https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/2bd78b0ef970a71fc956648304c01f836115cb76"
+BACKUP="$HOME/Downloads/BACKUP-ZOTERO-ATELIER-SEM-DUPLICATAS-$(date +%Y%m%d-%H%M%S)"
 FILES=(zoteroapi.lua annotations.lua main.lua)
 
 die() { printf 'ERRO: %s\n' "$*" >&2; exit 1; }
 
-echo "Zotero Atelier Drop Sync: sincronizacao de anotacoes nos dois sentidos, sem exclusoes implicitas."
+echo "Zotero Atelier Drop Sync: correcao de duplicatas e perda de anotacoes ao reabrir PDF."
 echo "Feche COMPLETAMENTE o KOReader; conecte o Kindle via USB."
 command -v findmnt >/dev/null 2>&1 || die "findmnt nao encontrado."
 command -v curl >/dev/null 2>&1 || die "curl nao encontrado."
@@ -48,8 +48,16 @@ grep -Fq 'Remote annotation is absent from this SDR; preserving item' "$WORK/zot
     die "Versao insegura: protecao de exclusoes ausente."
 grep -Fq 'function Annotations.fingerprint(ann)' "$WORK/annotations.lua" ||
     die "Versao inesperada: protecao de conflitos ausente."
-grep -Fq 'pull = true' "$WORK/main.lua" ||
-    die "Versao inesperada: sincronizacao bidirecional ausente."
+grep -Fq 'readerui:reloadDocument(function(closed_file)' "$WORK/main.lua" ||
+    die "Versao insegura: recarga de PDF sem preservacao de anotacoes."
+grep -Fq 'fresh:saveSetting("annotations", annotation_snapshot)' "$WORK/main.lua" ||
+    die "Versao insegura: perda de anotacoes ao reabrir PDF."
+grep -Fq 'function Annotations.findEquivalentAnnotation' "$WORK/annotations.lua" ||
+    die "Versao insegura: protecao contra duplicatas ausente."
+grep -Fq 'and k_annotations[i].zoteroSyncedFingerprint == nil' "$WORK/annotations.lua" ||
+    die "Versao insegura: anotacao anteriormente sincronizada poderia ser reenviada."
+grep -Fq 'Zotero: library catalogue refresh will not upload annotations' "$WORK/zoteroapi.lua" ||
+    die "Versao insegura: envio automatico da biblioteca ainda habilitado."
 if command -v luac5.1 >/dev/null 2>&1; then
     for name in "${FILES[@]}"; do
         luac5.1 -p "$WORK/$name" || die "Falha na sintaxe de $name; Kindle inalterado."
@@ -80,7 +88,7 @@ for name in "${FILES[@]}"; do
 done
 sync
 echo
-echo "OK: modulos de sincronizacao bidirecional instalados com backup; configuracoes mantidas."
+echo "OK: correcao anti-duplicatas instalada com backup; configuracoes preservadas."
 echo "Backup de retorno: $BACKUP"
 echo "PDFs, EPUBs, .sdr, SQLite e credenciais nao foram alterados."
 echo "Ejete o Kindle com seguranca e reinicie o KOReader."

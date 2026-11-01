@@ -32,9 +32,25 @@ assert(fetch:find("Remote annotation is trashed; preserving cached annotation",1
 local open_sync = between(main,
     "function Plugin:syncOpenDocumentAnnotations(readerui, opts)",
     "function Plugin:onReaderReady(readerui)")
-assert(open_sync:find("total_fails",1,true),
+assert(open_sync:find("upload_fails",1,true)
+    and open_sync:find("error_message",1,true),
     "Unsafe: upload errors must not display success")
-assert(open_sync:find("opts.pull",1,true)
-    and open_sync:find("ZoteroAPI.pullAnnotationsForAttachment",1,true),
-    "Unsafe: two-way sync must actually fetch remote annotations before reporting success")
+local pull_pos = assert(open_sync:find("ZoteroAPI.pullAnnotationsForAttachment", 1, true))
+local push_pos = assert(open_sync:find("ZoteroAPI.syncAnnotationsForAttachment", 1, true))
+assert(pull_pos < push_pos,
+    "Unsafe: remote keys must be pulled and linked BEFORE creating local annotations")
+local reload_sync = between(main,
+    "function Plugin:reloadReaderAnnotations(readerui)",
+    "function Plugin:syncOpenDocumentAnnotations(readerui, opts)")
+assert(reload_sync:find("readerui:reloadDocument(function(closed_file)", 1, true)
+    and reload_sync:find('fresh:saveSetting("annotations", annotation_snapshot)', 1, true),
+    "Unsafe: KOReader reload must preserve the imported sidecar after onClose")
+local catalogue = between(api,
+    "function API.syncAllItems(progress_callback)",
+    "-- Check (local) library items")
+assert(not catalogue:find("API.syncAnnotations()", 1, true),
+    "Unsafe: catalogue sync must not silently create duplicates in bulk")
+local open_close = between(main, "function Plugin:onReaderReady(readerui)", "function Plugin:init()")
+assert(not open_close:find("self:syncOpenDocumentAnnotations(",1,true),
+    "Unsafe: document close/open hooks must not race remote imports")
 print("PASS: missing sidecars cannot delete remote/local highlights; sync failure is visible")

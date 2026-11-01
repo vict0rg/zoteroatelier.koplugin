@@ -505,6 +505,49 @@ function Annotations.fingerprint(ann)
     return table.concat(out, "|")
 end
 
+-- Identify an imported Zotero annotation that is already drawn locally but
+-- lost its Zotero key (for example after KOReader reload saved stale memory).
+-- Match by PDF page, highlight type, text AND geometry. A repeated sentence
+-- elsewhere on the page must not be confused with the existing highlight.
+local function annotationTextKey(text)
+    return tostring(text or ""):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+end
+
+function Annotations.findEquivalentAnnotation(annotations, candidate, allow_linked)
+    if not candidate or not annotations then return nil end
+    local c_boxes = candidate.pboxes or {}
+    local matches = {}
+    for i, ann in ipairs(annotations) do
+        if (allow_linked or not ann.zoteroKey)
+            and Annotations.getAnnotationPage(ann) == Annotations.getAnnotationPage(candidate)
+            and tostring(ann.drawer or "") == tostring(candidate.drawer or "")
+            and annotationTextKey(ann.text) == annotationTextKey(candidate.text)
+            and annotationTextKey(ann.note) == annotationTextKey(candidate.note) then
+            local a_boxes = ann.pboxes or {}
+            local position_equal = (#a_boxes == #c_boxes and #c_boxes > 0)
+            if position_equal then
+                for n = 1, #c_boxes do
+                    local a, b = a_boxes[n], c_boxes[n]
+                    for _, prop in ipairs({"x", "y", "w", "h"}) do
+                        if not (a and b and tonumber(a[prop]) and tonumber(b[prop])
+                                and math.abs(tonumber(a[prop]) - tonumber(b[prop])) <= 2.0) then
+                            position_equal = false
+                            break
+                        end
+                    end
+                    if not position_equal then break end
+                end
+            elseif #c_boxes == 0 and #a_boxes == 0 then
+                -- EPUB has no PDF rectangles. Match only if unique.
+                position_equal = true
+            end
+            if position_equal then matches[#matches + 1] = i end
+        end
+    end
+    if #matches == 1 then return matches[1] end
+    return nil -- Ambiguous matches must never be silently linked.
+end
+
 function Annotations.annotationNeedsUpdate(local_ann, zotero_item)
     if local_ann == nil or zotero_item == nil or zotero_item.data == nil then
         return false
@@ -694,7 +737,8 @@ function Annotations.createAnnotations(file_path, key, creation_callback)
 
     logger.info("Annotations.createAnnotations: Processing " .. #k_annotations .. " annotations")
     for i = 1, #k_annotations do
-        if (k_annotations[i].zoteroKey == nil) and (k_annotations[i].drawer ~= nil) then
+        if (k_annotations[i].zoteroKey == nil) and (k_annotations[i].drawer ~= nil)
+            and k_annotations[i].zoteroSyncedFingerprint == nil then
             local pageno = Annotations.getAnnotationPage(k_annotations[i])
             if is_pdf then
                 local page_bbox = page_dimensions[pageno]
@@ -714,6 +758,14 @@ function Annotations.createAnnotations(file_path, key, creation_callback)
         end
     end
 
+    -- An imported highlight that lost its Zotero key but still carries a
+    -- previous sync fingerprint must NEVER be posted as new. The remote pull
+    -- may repair its key; until then preserve it as an unresolved local mark.
+    for _, ann in ipairs(k_annotations) do
+        if not ann.zoteroKey and ann.zoteroSyncedFingerprint then
+            logger.warn("Zotero: skipping previously synced highlight with missing remote key")
+        end
+    end
     if #z_annotations == 0 then
         logger.info("Annotations.createAnnotations: No new annotations to create")
         return 0, nil

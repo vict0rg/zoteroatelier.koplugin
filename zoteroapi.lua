@@ -2036,17 +2036,12 @@ function API.syncAllItems(progress_callback)
     end
 
     local err
-    if since > 0 then
-        -- try to sync back first, so that any changes will be recorded when we update the db later on
-        if API.access.user.write and API.access.user.notes then
-            local upload_fails, delete_fails = API.syncAnnotations()
-            sync_stats.annotation_upload_fails = upload_fails or 0
-            sync_stats.annotation_delete_fails = delete_fails or 0
-        else
-            err = "Zotero: API key does not have write access!"
-            logger.warn(err)
-        end
-    end
+    -- DATA SAFETY: catalogue refresh is READ-ONLY. Previously it silently
+    -- uploaded highlights from every cached PDF and could re-create remote
+    -- annotations whose keys were lost during a KOReader reload.
+    -- A user-initiated "Sync document annotations" pulls remote keys first,
+    -- reconciles duplicates, and only then writes local changes.
+    logger.info("Zotero: library catalogue refresh will not upload annotations")
 
     --[[
 	-- try downloading My publications:
@@ -3462,7 +3457,26 @@ function API.attachItemAnnotations(item, annotation_callback, filePathOverride, 
                         else
                             logger.info("Zotero: Converting annotation " .. key .. " on page " .. page)
                             if localZotAnn[key] == nil then
-                                table.insert(koreaderAnnotations, Annotations.convertZoteroToKOReader(ann_item, page_bbox))
+                                local incoming = Annotations.convertZoteroToKOReader(ann_item, page_bbox)
+                                local equivalent_index = Annotations.findEquivalentAnnotation(
+                                    koreaderAnnotations, incoming, false)
+                                if equivalent_index then
+                                    -- Restore the missing Zotero key rather than
+                                    -- uploading the old highlight as a new item.
+                                    local existing = koreaderAnnotations[equivalent_index]
+                                    existing.zoteroKey = key
+                                    existing.zoteroVersion = ann_item.version
+                                    existing.zoteroSyncedFingerprint =
+                                        Annotations.fingerprint(existing)
+                                    logger.info("Zotero: relinked existing Kindle highlight " .. key)
+                                elseif not Annotations.findEquivalentAnnotation(
+                                    koreaderAnnotations, incoming, true) then
+                                    table.insert(koreaderAnnotations, incoming)
+                                else
+                                    -- Multiple server annotations can have exactly
+                                    -- the same position/text. Do not draw them twice.
+                                    logger.warn("Zotero: overlapping remote annotation not duplicated locally " .. key)
+                                end
                             elseif (tonumber(localZotAnn[key].version) or 0) < (tonumber(itemInfo.version) or 0) then
                                 local existing = koreaderAnnotations[localZotAnn[key].position]
                                 if existing.zoteroSyncedFingerprint == Annotations.fingerprint(existing) then
@@ -3484,7 +3498,21 @@ function API.attachItemAnnotations(item, annotation_callback, filePathOverride, 
                 local ann_item = API.getItem(key)
                 if ann_item and ann_item.data then
                     if localZotAnn[key] == nil then
-                        table.insert(koreaderAnnotations, Annotations.convertZoteroToKOReaderEpub(ann_item))
+                        local incoming = Annotations.convertZoteroToKOReaderEpub(ann_item)
+                        local equivalent_index = Annotations.findEquivalentAnnotation(
+                            koreaderAnnotations, incoming, false)
+                        if equivalent_index then
+                            local existing = koreaderAnnotations[equivalent_index]
+                            existing.zoteroKey = key
+                            existing.zoteroVersion = ann_item.version
+                            existing.zoteroSyncedFingerprint =
+                                Annotations.fingerprint(existing)
+                        elseif not Annotations.findEquivalentAnnotation(
+                            koreaderAnnotations, incoming, true) then
+                            table.insert(koreaderAnnotations, incoming)
+                        else
+                            logger.warn("Zotero: duplicate remote EPUB annotation omitted from sidecar " .. key)
+                        end
                     elseif (tonumber(localZotAnn[key].version) or 0) < (tonumber(itemInfo.version) or 0) then
                         local existing = koreaderAnnotations[localZotAnn[key].position]
                         if existing.zoteroSyncedFingerprint == Annotations.fingerprint(existing) then
