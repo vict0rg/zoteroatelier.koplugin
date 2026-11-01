@@ -6,7 +6,7 @@ umask 077
 
 MOUNT="${KINDLE_MOUNT:-/media/$USER/Kindle}"
 PLUGIN="$MOUNT/koreader/plugins/zoteroatelier.koplugin"
-REV="d0585a0bfe464324db657efc9037258be6e46232"
+REV="809b41950fdd689f174b0fd8767730c4b065d617"
 BASE="https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/$REV"
 BACKUP="$HOME/Downloads/BACKUP-ZOTERO-ATELIER-EXCLUSOES-$(date +%Y%m%d-%H%M%S)"
 FILES=(annotation_delete_state.lua zoteroapi.lua main.lua)
@@ -65,6 +65,17 @@ else
 fi
 
 mkdir -p "$BACKUP"
+# Back up CURRENT Kindle document metadata before enabling destructive sync.
+# The archive contains only .sdr directories, not PDFs, EPUBs or Dropbox files.
+if [[ -d "$MOUNT/documents/Zotero" ]]; then
+    (
+        cd "$MOUNT"
+        find documents/Zotero -type d -name '*.sdr' -print0 \
+            | tar --null -cf "$BACKUP/sidecars-antes-exclusoes.tar" -T -
+    ) || die "Nao foi possivel guardar os .sdr atuais; Kindle inalterado."
+    [[ -s "$BACKUP/sidecars-antes-exclusoes.tar" ]] ||
+        die "Backup de .sdr vazio; Kindle inalterado."
+fi
 for name in "${FILES[@]}"; do
     if [[ -f "$PLUGIN/$name" ]]; then
         cp -p "$PLUGIN/$name" "$BACKUP/$name" ||
@@ -89,6 +100,7 @@ done
 sync
 echo
 echo "OK: exclusoes confirmadas instaladas. Backup dos modulos: $BACKUP"
+echo "O backup tambem inclui os arquivos .sdr encontrados no Kindle."
 echo "Nenhum PDF, EPUB, .sdr, SQLite ou credencial foi modificado."
 echo "No PRIMEIRO 'Sync document annotations', o plugin somente estabelece"
 echo "quais anotacoes estao em ambos os lugares. NAO apaga nada."
