@@ -26,6 +26,7 @@ jobs:
           luac5.1 -p _meta.lua
           luac5.1 -p annotations.lua
           luac5.1 -p tools/test_annotation_page.lua
+          luac5.1 -p tools/test_zotero_annotation_writes.lua
           luac5.1 -p zoteroapi.lua
           luac5.1 -p zotero_dropbox.lua
           luac5.1 -p zotero_file_validation.lua
@@ -36,6 +37,9 @@ jobs:
       - name: Regress PDF annotation page-only conversion without network access
         run: |
           lua5.1 tools/test_annotation_page.lua
+      - name: Verify 412 retry and safe annotation conflict handling
+        run: |
+          lua5.1 tools/test_zotero_annotation_writes.lua
       - name: Exercise safe per-file Kindle removal with two confirmations and no real filesystem
         run: |
           lua5.1 tools/test_storage_manager_cleanup.lua
