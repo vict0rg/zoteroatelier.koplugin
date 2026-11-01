@@ -39,6 +39,17 @@ local server_online=true
 local calls={}
 ZoteroAPI={
     findAttachmentKeyByFilePath=function(path) return "PDFKEY00" end,
+    planAnnotationDeletions=function(key,path)
+        calls[#calls+1]="plan"
+        if not server_online then return nil,"simulated network offline" end
+        return {local_deleted={},remote_deleted={}}
+    end,
+    saveConfirmedAnnotationBaseline=function(key,path)
+        calls[#calls+1]="baseline"
+        disk.zoteroConfirmedAnnotationKeysV1={
+            schema=1,ready=true,keys={"OLDZOTER","NEWZOTER"}}
+        return true,2
+    end,
     pullAnnotationsForAttachment=function(key,path)
         calls[#calls+1]="pull"
         if not server_online then return false,"offline" end
@@ -85,8 +96,11 @@ reader={
 }
 local p=setmetatable({}, {__index=Plugin})
 p:syncOpenDocumentAnnotations(reader,{notify=true})
-assert(calls[1]=="pull" and calls[2]=="push","Pull must occur before push")
+assert(calls[1]=="plan" and calls[2]=="pull" and calls[3]=="push"
+    and calls[4]=="baseline","Preflight → pull → push → baseline is required")
 assert(#disk.annotations==2)
+assert(disk.zoteroConfirmedAnnotationKeysV1.ready,
+    "Paired deletion baseline must survive KOReader reload")
 assert(disk.annotations[1].zoteroKey=="OLDZOTER",
     "ReaderUI:onClose overwrote imported annotation; after_close did not restore")
 assert(disk.annotations[2].zoteroKey=="NEWZOTER",
@@ -96,6 +110,7 @@ assert(reader.annotation.annotations[1].zoteroKey=="OLDZOTER",
 local before=#calls
 server_online=false
 p:syncOpenDocumentAnnotations(reader,{notify=true})
-assert(#calls==before+1 and calls[#calls]=="pull","Failed pull must prevent all uploads")
+assert(#calls==before+1 and calls[#calls]=="plan",
+    "Failed preflight must prevent all uploads and remote pulls")
 assert(#disk.annotations==2 and disk.annotations[1].zoteroKey=="OLDZOTER")
 print("PASS: actual document sync pulls before push; KOReader reload preserves both keys; offline aborts uploads")
