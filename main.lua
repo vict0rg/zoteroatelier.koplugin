@@ -549,15 +549,21 @@ function Plugin:syncOpenDocumentAnnotations(readerui, opts)
             .. _("Only annotations verified on BOTH devices in an earlier sync qualify.")
             .. "\n"
             .. _("Cancel preserves all remote annotations and stops this sync.")
+        -- Nothing is being written while the modal waits. Reset busy now,
+        -- so closing the dialog with Back (without cancel_callback) cannot
+        -- permanently disable subsequent sync attempts.
+        self._zotero_document_sync_busy = false
         local box = ConfirmBox:new({
             text = prompt,
             ok_text = _("Confirm these deletions"),
             ok_callback = function()
-                -- Ensure the user did not switch PDFs before confirming.
-                if not readerui.document or readerui.document.file ~= file_path then
-                    self._zotero_document_sync_busy = false
+                -- Ensure the user did not switch PDFs before confirming and
+                -- prevent a second destructive invocation.
+                if self._zotero_document_sync_busy
+                    or not readerui.document or readerui.document.file ~= file_path then
                     return
                 end
+                self._zotero_document_sync_busy = true
                 performSync()
             end,
             cancel_callback = function()
