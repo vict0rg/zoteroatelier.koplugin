@@ -7,7 +7,7 @@ umask 077
 
 MOUNT="${KINDLE_MOUNT:-/media/$USER/Kindle}"
 PLUGIN="$MOUNT/koreader/plugins/zoteroatelier.koplugin"
-BASE="https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/33eaceafe449a1b523e656ababec7ba57100cc92"
+BASE="https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/43a3d7658a8788f337f415bc71b1ed87dbdfb9ac"
 BACKUP="$HOME/Downloads/BACKUP-ZOTERO-ATELIER-ANOTACOES-$(date +%Y%m%d-%H%M%S)"
 FILES=(annotations.lua _meta.lua)
 
@@ -42,7 +42,7 @@ grep -Fq 'function Annotations.getAnnotationPage(annotation)' "$WORK/annotations
     die "Versao inesperada: funcao de pagina nao encontrada."
 grep -Fq 'Annotations.makeSortIndex(page_no, 0, miny)' "$WORK/annotations.lua" ||
     die "Versao inesperada: correcao de sincronizacao ausente."
-grep -Fq 'fullname = _("Zotero Atelier")' "$WORK/_meta.lua" ||
+grep -Fq 'fullname = _("Zotero Atelier Drop Sync")' "$WORK/_meta.lua" ||
     die "Metadados de plugin incorretos."
 if command -v luac5.1 >/dev/null 2>&1; then
     for name in "${FILES[@]}"; do
