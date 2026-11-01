@@ -22,6 +22,7 @@ jobs:
       - name: Check KOReader Lua syntax
         run: |
           luac5.1 -p annotation_panel.lua
+          luac5.1 -p _meta.lua
           luac5.1 -p annotations.lua
           luac5.1 -p tools/test_annotation_page.lua
           luac5.1 -p zoteroapi.lua
