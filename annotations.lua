@@ -737,7 +737,8 @@ function Annotations.createAnnotations(file_path, key, creation_callback)
 
     logger.info("Annotations.createAnnotations: Processing " .. #k_annotations .. " annotations")
     for i = 1, #k_annotations do
-        if (k_annotations[i].zoteroKey == nil) and (k_annotations[i].drawer ~= nil) then
+        if (k_annotations[i].zoteroKey == nil) and (k_annotations[i].drawer ~= nil)
+            and k_annotations[i].zoteroSyncedFingerprint == nil then
             local pageno = Annotations.getAnnotationPage(k_annotations[i])
             if is_pdf then
                 local page_bbox = page_dimensions[pageno]
@@ -757,6 +758,14 @@ function Annotations.createAnnotations(file_path, key, creation_callback)
         end
     end
 
+    -- An imported highlight that lost its Zotero key but still carries a
+    -- previous sync fingerprint must NEVER be posted as new. The remote pull
+    -- may repair its key; until then preserve it as an unresolved local mark.
+    for _, ann in ipairs(k_annotations) do
+        if not ann.zoteroKey and ann.zoteroSyncedFingerprint then
+            logger.warn("Zotero: skipping previously synced highlight with missing remote key")
+        end
+    end
     if #z_annotations == 0 then
         logger.info("Annotations.createAnnotations: No new annotations to create")
         return 0, nil
