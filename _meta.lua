@@ -1,13 +1,20 @@
+-- Use core gettext only here: _meta.lua is loaded before the plugin path
+-- is always on package.path, so require("zotero_i18n") can fail and hide the plugin.
 local _ = require("gettext")
 
 return {
-    -- Install folder must be zoteroatelier.koplugin; name must match.
-    name = "zoteroatelier",
+    -- Plugin id = folder name (zoteroatelier.koplugin → zoteroatelier).
+    -- Do not rely on a "name" field here (deprecated in recent KOReader).
     fullname = _("Zotero Atelier"),
     description = _([[
-Accès rapide à votre bibliothèque Zotero (parcours, sync, annotations PDF/EPUB, fichiers locaux).
+Zotero library in KOReader: browse, sync, PDF/EPUB annotations, local files.
 
-Menu : barre du haut → Recherche (loupe) ou Outils → Zotero Atelier.
-Liste des plugins : Réglages → Plugin management → User plugins → Zotero Atelier.
-Redémarrez KOReader après l’installation.]]),
+Where to find it:
+• Top menu → Search (magnifier) → Zotero Atelier
+• Top menu → Tools → Zotero Atelier
+• Top menu → Settings (gear) → Zotero Atelier
+• Enable: Settings → Plugin management → User plugins → Zotero Atelier
+
+Required folder: zoteroatelier.koplugin (with main.lua and _meta.lua at its root).
+Fully restart KOReader after install.]]),
 }
