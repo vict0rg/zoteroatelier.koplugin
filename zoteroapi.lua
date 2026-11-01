@@ -3462,7 +3462,26 @@ function API.attachItemAnnotations(item, annotation_callback, filePathOverride, 
                         else
                             logger.info("Zotero: Converting annotation " .. key .. " on page " .. page)
                             if localZotAnn[key] == nil then
-                                table.insert(koreaderAnnotations, Annotations.convertZoteroToKOReader(ann_item, page_bbox))
+                                local incoming = Annotations.convertZoteroToKOReader(ann_item, page_bbox)
+                                local equivalent_index = Annotations.findEquivalentAnnotation(
+                                    koreaderAnnotations, incoming, false)
+                                if equivalent_index then
+                                    -- Restore the missing Zotero key rather than
+                                    -- uploading the old highlight as a new item.
+                                    local existing = koreaderAnnotations[equivalent_index]
+                                    existing.zoteroKey = key
+                                    existing.zoteroVersion = ann_item.version
+                                    existing.zoteroSyncedFingerprint =
+                                        Annotations.fingerprint(existing)
+                                    logger.info("Zotero: relinked existing Kindle highlight " .. key)
+                                elseif not Annotations.findEquivalentAnnotation(
+                                    koreaderAnnotations, incoming, true) then
+                                    table.insert(koreaderAnnotations, incoming)
+                                else
+                                    -- Multiple server annotations can have exactly
+                                    -- the same position/text. Do not draw them twice.
+                                    logger.warn("Zotero: overlapping remote annotation not duplicated locally " .. key)
+                                end
                             elseif (tonumber(localZotAnn[key].version) or 0) < (tonumber(itemInfo.version) or 0) then
                                 local existing = koreaderAnnotations[localZotAnn[key].position]
                                 if existing.zoteroSyncedFingerprint == Annotations.fingerprint(existing) then
@@ -3484,7 +3503,21 @@ function API.attachItemAnnotations(item, annotation_callback, filePathOverride, 
                 local ann_item = API.getItem(key)
                 if ann_item and ann_item.data then
                     if localZotAnn[key] == nil then
-                        table.insert(koreaderAnnotations, Annotations.convertZoteroToKOReaderEpub(ann_item))
+                        local incoming = Annotations.convertZoteroToKOReaderEpub(ann_item)
+                        local equivalent_index = Annotations.findEquivalentAnnotation(
+                            koreaderAnnotations, incoming, false)
+                        if equivalent_index then
+                            local existing = koreaderAnnotations[equivalent_index]
+                            existing.zoteroKey = key
+                            existing.zoteroVersion = ann_item.version
+                            existing.zoteroSyncedFingerprint =
+                                Annotations.fingerprint(existing)
+                        elseif not Annotations.findEquivalentAnnotation(
+                            koreaderAnnotations, incoming, true) then
+                            table.insert(koreaderAnnotations, incoming)
+                        else
+                            logger.warn("Zotero: duplicate remote EPUB annotation omitted from sidecar " .. key)
+                        end
                     elseif (tonumber(localZotAnn[key].version) or 0) < (tonumber(itemInfo.version) or 0) then
                         local existing = koreaderAnnotations[localZotAnn[key].position]
                         if existing.zoteroSyncedFingerprint == Annotations.fingerprint(existing) then
