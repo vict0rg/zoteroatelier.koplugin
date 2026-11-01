@@ -54,3 +54,4 @@ jobs:
           bash -n tools/instalar_exclusao_individual_kindle.sh
           bash -n tools/ativar_exclusao_individual_kindle.sh
           bash -n tools/restaurar_selecao_sem_exclusao_kindle.sh
+          bash -n tools/atualizar_atelier_kindle_anotacoes_2026-11-01.sh
