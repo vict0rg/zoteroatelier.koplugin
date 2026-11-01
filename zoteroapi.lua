@@ -3711,7 +3711,11 @@ end
 -- The incremental library cache is not proof that a document has all its
 -- annotations. GET /items/<attachment>/children is authoritative for this item.
 -- No remote DELETE is ever inferred or performed here.
-function API.pullAnnotationsForAttachment(key, file_path)
+function API.pullAnnotationsForAttachment(key, file_path, skip_keys)
+    -- A successful Kindle → Zotero DELETE may take a moment to disappear
+    -- from a cached /children list. Never re-import the user's just-deleted
+    -- local annotations, even if the server briefly returns stale data.
+    skip_keys = skip_keys or {}
     if not key or not file_path or not file_exists(file_path) then
         return false, "missing local document"
     end
@@ -3797,7 +3801,15 @@ function API.pullAnnotationsForAttachment(key, file_path)
 
     local attachment = API.getItem(key)
     if not attachment then return false, "attachment metadata unavailable" end
-    local ok, err = pcall(API.attachItemAnnotations, attachment, nil, file_path, true, remote_keys)
+    local allowed_keys = {}
+    for remote_key in pairs(remote_keys) do
+        if not skip_keys[remote_key] then
+            allowed_keys[remote_key] = true
+        else
+            logger.info("Zotero: skip re-import of user-confirmed Kindle deletion " .. remote_key)
+        end
+    end
+    local ok, err = pcall(API.attachItemAnnotations, attachment, nil, file_path, true, allowed_keys)
     if not ok then
         logger.err("Zotero: annotation pull/import crashed: ", err)
         return false, tostring(err)
