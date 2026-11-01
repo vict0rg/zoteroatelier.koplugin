@@ -3541,6 +3541,160 @@ function API.attachItemAnnotations(item, annotation_callback, filePathOverride, 
     docSettings:flush()
 end
 
+-- A deletion may be propagated ONLY for annotation keys confirmed
+-- present on both devices during a previous successful manual document sync.
+-- No automatic delete on first run, on a missing sidecar, or when the remote
+-- API returns a partial/error response.
+local AnnotationDeleteState = require("annotation_delete_state")
+local CONFIRMED_KEYS_SETTING = "zoteroConfirmedAnnotationKeysV1"
+
+function API.remoteAnnotationSnapshot(parent_key)
+    local err = API.verifyZoteroAccess()
+    if err then return nil, err end
+    local entries = {}
+    local start, limit = 0, 100
+    while start < 10000 do
+        local url = API.userLibraryURL .. "/items/" .. tostring(parent_key)
+            .. "/children?itemType=annotation&limit=" .. limit .. "&start=" .. start
+        local items, fetch_error = API.getZoteroData(url)
+        if type(items) ~= "table" then
+            return nil, "Annotation list unavailable: " .. tostring(fetch_error)
+        end
+        local n = 0
+        for _, item in pairs(items) do
+            n = n + 1
+            if type(item) == "table" and item.key and item.data
+                and item.data.itemType == "annotation"
+                and tostring(item.data.parentItem or "") == tostring(parent_key)
+                and (item.data.annotationType == "highlight"
+                    or item.data.annotationType == "underline") then
+                entries[item.key] = item
+            end
+        end
+        if n < limit then return entries end
+        start = start + limit
+    end
+    return nil, "Annotation list exceeds safe pagination limit"
+end
+
+function API.planAnnotationDeletions(parent_key, file_path)
+    if not parent_key or not file_path or not file_exists(file_path) then
+        return nil, "Document or Zotero attachment unavailable"
+    end
+    local doc = DocSettings:open(file_path)
+    local local_anns = doc:readSetting("annotations", {}) or {}
+    local saved = doc:readSetting(CONFIRMED_KEYS_SETTING)
+    if doc.close then doc:close() end
+    local remote_items, err = API.remoteAnnotationSnapshot(parent_key)
+    if not remote_items then return nil, err end
+    local remote_keys = {}
+    for k in pairs(remote_items) do remote_keys[k] = true end
+    local local_keys = AnnotationDeleteState.localKeys(local_anns)
+    local plan = AnnotationDeleteState.plan(saved, local_keys, remote_keys)
+    plan.parent_key = parent_key
+    plan.file_path = file_path
+    plan.remote_items = remote_items
+    plan.local_keys = local_keys
+
+    -- The remote annotation list is not sufficient proof of deletion. Verify
+    -- each missing previously confirmed key by individual Zotero GET → 404.
+    -- Fail entirely on 200, 403, network error, rate limit, or ambiguity.
+    for _, key in ipairs(plan.remote_deleted) do
+        local item, check_error = API.getZoteroData(API.userLibraryURL .. "/items/" .. key)
+        if item ~= nil or type(check_error) ~= "string"
+            or not check_error:match("%f[%d]404%f[%D]") then
+            return nil, "Cannot independently verify deletion of " .. key
+                .. " (" .. tostring(check_error or "item still exists") .. ")"
+        end
+    end
+
+    -- No bulk unbounded deletions under any circumstances.
+    if #plan.local_deleted + #plan.remote_deleted > 20 then
+        return nil, "More than 20 missing annotations: no deletions performed. Inspect log."
+    end
+    return plan
+end
+
+-- Called only AFTER an affirmative KOReader ConfirmBox action. Each server
+-- deletion is scoped to this PDF, verified with a fresh item GET, and uses a
+-- current library write-version guard to avoid racing desktop edits.
+function API.applyConfirmedAnnotationDeletions(plan)
+    if type(plan) ~= "table" or not plan.parent_key or not plan.file_path
+        or not file_exists(plan.file_path) then
+        return false, "Invalid deletion plan"
+    end
+    for _, key in ipairs(plan.local_deleted or {}) do
+        local remote, err = API.getZoteroData(API.userLibraryURL .. "/items/" .. key)
+        if not remote or not remote.data or remote.data.itemType ~= "annotation"
+            or tostring(remote.data.parentItem or "") ~= tostring(plan.parent_key)
+            or not plan.remote_items[key]
+            or tonumber(remote.version) ~= tonumber(plan.remote_items[key].version) then
+            return false, "Zotero annotation changed since confirmation; keeping " .. key
+                .. ": " .. tostring(err)
+        end
+        local current_version, v_err = refreshWriteVersion()
+        if not current_version then return false, v_err end
+        local headers = {}
+        for k, v in pairs(API.zoteroHeader or {}) do headers[k] = v end
+        headers["If-Unmodified-Since-Version"] = tostring(current_version)
+        local r, status, response_headers = https.request({
+            method = "DELETE",
+            url = API.userLibraryURL .. "/items/" .. key,
+            headers = headers,
+        })
+        if r ~= 1 or tonumber(status) ~= 204 then
+            return false, "Zotero refused confirmed delete of " .. key
+                .. " (HTTP " .. tostring(status) .. ")"
+        end
+        noteZoteroWriteVersion(response_headers)
+        logger.info("Zotero: deleted user-confirmed annotation " .. key)
+    end
+
+    if #(plan.remote_deleted or {}) > 0 then
+        local doc = DocSettings:open(plan.file_path)
+        local anns = doc:readSetting("annotations", {}) or {}
+        local removed = {}
+        local archived = doc:readSetting("zoteroDeletedAnnotationArchiveV1", {}) or {}
+        local to_remove = {}
+        for _, key in ipairs(plan.remote_deleted) do to_remove[key] = true end
+        for i = #anns, 1, -1 do
+            local ann = anns[i]
+            if ann.zoteroKey and to_remove[ann.zoteroKey] then
+                -- Retain the annotation's full data in the document sidecar
+                -- as an emergency recovery copy, never DELETE from PDF.
+                archived[#archived+1] = ann
+                if #archived > 100 then table.remove(archived, 1) end
+                table.remove(anns, i)
+                removed[#removed+1] = ann.zoteroKey
+            end
+        end
+        doc:saveSetting("zoteroDeletedAnnotationArchiveV1", archived)
+        doc:saveSetting("annotations", anns)
+        doc:flush()
+        if doc.close then doc:close() end
+        logger.info("Zotero: removed " .. tostring(#removed)
+            .. " user-confirmed remotely deleted annotation(s) from Kindle sidecar")
+    end
+    return true
+end
+
+function API.saveConfirmedAnnotationBaseline(parent_key, file_path)
+    local remote, err = API.remoteAnnotationSnapshot(parent_key)
+    if not remote then return false, err end
+    local remote_keys = {}
+    for key in pairs(remote) do remote_keys[key] = true end
+    local ds = DocSettings:open(file_path)
+    local anns = ds:readSetting("annotations", {}) or {}
+    local local_keys = AnnotationDeleteState.localKeys(anns)
+    local saved = AnnotationDeleteState.baseline(local_keys, remote_keys)
+    ds:saveSetting(CONFIRMED_KEYS_SETTING, saved)
+    ds:flush()
+    if ds.close then ds:close() end
+    logger.info("Zotero: confirmed " .. tostring(#saved.keys)
+        .. " annotation keys on both devices for later explicit deletes")
+    return true, #saved.keys
+end
+
 -- Explicit non-destructive pull of PDF/EPUB annotation children from Zotero.
 -- The incremental library cache is not proof that a document has all its
 -- annotations. GET /items/<attachment>/children is authoritative for this item.
