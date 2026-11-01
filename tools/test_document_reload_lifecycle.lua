@@ -83,7 +83,9 @@ ZoteroAPI={
         for _,ann in ipairs(disk.annotations) do
             if not ann.zoteroKey then new_count=new_count+1 end
         end
-        assert(new_count==1, "Existing Zotero highlight was about to be re-uploaded")
+        local expected = disk.annotations[2].zoteroKey and 0 or 1
+        assert(new_count==expected,
+            "Existing Zotero highlights must not be re-uploaded")
         disk.annotations[2].zoteroKey="NEWZOTER"
         return 0,0,0
     end,
