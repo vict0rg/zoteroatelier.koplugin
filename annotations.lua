@@ -19,11 +19,16 @@ local K2Z_COLORS = {
     ["orange"] = "#f19837",
     ["yellow"] = "#ffd400",
     ["green"] = "#5fb236",
-    ["olive"] = "#88ff77",
-    ["cyan"] = "#00ffee",
-    ["blue"] = "#0066FF",
+    -- Zotero's annotation API accepts the official palette, not arbitrary
+    -- valid-looking hexadecimal values. The old blue #0066FF caused six 400s.
+    ["olive"] = "#5fb236",
+    ["cyan"] = "#2ea8e5",
+    ["blue"] = "#2ea8e5",
     ["purple"] = "#a28ae5",
     ["gray"] = "#aaaaaa",
+    ["grey"] = "#aaaaaa",
+    ["black"] = "#aaaaaa",
+    ["magenta"] = "#e56eee",
 }
 
 local K2Z_STYLE = {
