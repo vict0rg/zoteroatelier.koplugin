@@ -32,9 +32,13 @@ assert(fetch:find("Remote annotation is trashed; preserving cached annotation",1
 local open_sync = between(main,
     "function Plugin:syncOpenDocumentAnnotations(readerui, opts)",
     "function Plugin:onReaderReady(readerui)")
-assert(open_sync:find("upload_fails",1,true)
-    and open_sync:find("error_message",1,true),
+assert(open_sync:find("error_message",1,true)
+    and open_sync:find("failures",1,true),
     "Unsafe: upload errors must not display success")
+assert(open_sync:find("ZoteroAPI.planAnnotationDeletions",1,true)
+    and open_sync:find("ConfirmBox:new",1,true)
+    and open_sync:find("ZoteroAPI.applyConfirmedAnnotationDeletions",1,true),
+    "Unsafe: destructive sync must require explicit user confirmation and a verified plan")
 local pull_pos = assert(open_sync:find("ZoteroAPI.pullAnnotationsForAttachment", 1, true))
 local push_pos = assert(open_sync:find("ZoteroAPI.syncAnnotationsForAttachment", 1, true))
 assert(pull_pos < push_pos,
@@ -45,6 +49,8 @@ local reload_sync = between(main,
 assert(reload_sync:find("readerui:reloadDocument(function(closed_file)", 1, true)
     and reload_sync:find('fresh:saveSetting("annotations", annotation_snapshot)', 1, true),
     "Unsafe: KOReader reload must preserve the imported sidecar after onClose")
+assert(reload_sync:find('fresh:saveSetting("zoteroConfirmedAnnotationKeysV1", baseline_snapshot)',1,true),
+    "Unsafe: KOReader close must not wipe the deletion baseline")
 local catalogue = between(api,
     "function API.syncAllItems(progress_callback)",
     "-- Check (local) library items")
