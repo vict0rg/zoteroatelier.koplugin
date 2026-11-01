@@ -1,8 +1,9 @@
-name: Experimental Dropbox syntax checks
+name: Zotero Atelier Drop Sync checks
 
 on:
   push:
     branches:
+      - master
       - feature/dropbox-on-demand
   pull_request:
   workflow_dispatch:
