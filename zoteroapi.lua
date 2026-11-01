@@ -3650,6 +3650,18 @@ function API.applyConfirmedAnnotationDeletions(plan)
         logger.info("Zotero: deleted user-confirmed annotation " .. key)
     end
 
+    -- Re-check each server-side deletion AFTER the user confirms, not only
+    -- when the confirmation dialog opened. A restore in the meantime must
+    -- never erase the Kindle copy.
+    for _, key in ipairs(plan.remote_deleted or {}) do
+        local item, check_error = API.getZoteroData(API.userLibraryURL .. "/items/" .. key)
+        if item ~= nil or type(check_error) ~= "string"
+            or not check_error:match("%f[%d]404%f[%D]") then
+            return false, "Zotero deletion no longer confirmed for " .. key
+                .. ": " .. tostring(check_error or "annotation was restored")
+        end
+    end
+
     if #(plan.remote_deleted or {}) > 0 then
         local doc = DocSettings:open(plan.file_path)
         local anns = doc:readSetting("annotations", {}) or {}
