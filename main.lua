@@ -25,6 +25,7 @@ local lfs = require("libs/libkoreader-lfs")
 local logger = require("logger")
 local NetworkMgr = require("ui/network/manager")
 local DocSettings = require("docsettings")
+local JSON = require("json")
 local Trapper = require("frontend/ui/trapper")
 
 local DEFAULT_LINES_PER_PAGE = 14
@@ -363,7 +364,16 @@ function Plugin:reloadReaderAnnotations(readerui)
     end
     local file_path = readerui.document.file
     local latest = DocSettings:open(file_path)
-    local annotation_snapshot = latest:readSetting("annotations", {}) or {}
+    -- A deep snapshot is essential: KOReader can mutate the cached table
+    -- while closing the old reader. A shared table would not protect imports.
+    local annotations_now = latest:readSetting("annotations", {}) or {}
+    local snapshot_ok, annotation_snapshot = pcall(function()
+        return JSON.decode(JSON.encode(annotations_now))
+    end)
+    if not snapshot_ok or type(annotation_snapshot) ~= "table" then
+        logger.err("Zotero: cannot snapshot annotations; refusing unsafe reload")
+        return false
+    end
     UIManager:scheduleIn(0.1, function()
         if not readerui.document or readerui.document.file ~= file_path then
             return
@@ -455,7 +465,8 @@ function Plugin:syncOpenDocumentAnnotations(readerui, opts)
 
         if opts.notify then
             local msg = ok
-                and _("Zotero annotation synchronization completed.")
+                and (_("Zotero annotation synchronization completed. Remote annotations checked: ")
+                    .. tostring(n_received))
                 or (_("Zotero annotation synchronization incomplete. Local notes preserved.")
                     .. "\n" .. tostring(error_message or "See KOReader log"))
             UIManager:show(InfoMessage:new({
