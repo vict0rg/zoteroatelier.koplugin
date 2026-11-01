@@ -60,6 +60,21 @@ package.preload["annotations"]=function()
         ann.zoteroSyncedFingerprint=A.fingerprint(ann)
         return ann
     end
+    A.findEquivalentAnnotation=function(list, incoming, allow_linked)
+        for i, ann in ipairs(list) do
+            if (allow_linked or not ann.zoteroKey)
+                and ann.page==incoming.page
+                and ann.text==incoming.text
+                and ann.drawer==incoming.drawer
+                and ann.color==incoming.color
+                and ann.pboxes and incoming.pboxes
+                and ann.pboxes[1].x==incoming.pboxes[1].x
+                and ann.pboxes[1].y==incoming.pboxes[1].y then
+                return i
+            end
+        end
+        return nil
+    end
     A.convertZoteroToKOReaderEpub=function(item) error("PDF test invoked EPUB") end
     A.setDefaultColor=noop
     A.supportedZoteroTypes=function() return {"highlight","underline"} end
@@ -114,6 +129,18 @@ assert(local_sidecar.annotations[1].zoteroSyncedFingerprint, "Imported mark need
 local ok2, changed2, count2=API.pullAnnotationsForAttachment("PDFKEY00","/tmp/test.pdf")
 assert(ok2 and changed2==false and count2==1,"Second pull should be idempotent")
 assert(#local_sidecar.annotations==1,"Second pull must not duplicate a highlight")
+-- Emulate the actual failure: KOReader live annotations had previously
+-- overwritten the sidecar and lost the Zotero key of an imported underline.
+local_sidecar.annotations[1].zoteroKey=nil
+local_sidecar.annotations[1].zoteroVersion=nil
+local_sidecar.annotations[1].zoteroSyncedFingerprint=nil
+local relink_ok, relink_changed, relink_count =
+    API.pullAnnotationsForAttachment("PDFKEY00","/tmp/test.pdf")
+assert(relink_ok and relink_changed and relink_count==1)
+assert(#local_sidecar.annotations==1, "Re-import must RELINK, not duplicate old highlight")
+assert(local_sidecar.annotations[1].zoteroKey=="ABCDEFGH",
+    "Previously imported highlight must regain Zotero identity")
+
 local_sidecar.annotations[#local_sidecar.annotations+1]={page=1,drawer="lighten",
     color="red",text="Kindle local mark, must survive"}
 network_ok=false
