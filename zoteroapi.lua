@@ -3559,6 +3559,10 @@ function API.pullAnnotationsForAttachment(key, file_path)
     local sidecar = DocSettings:open(file_path)
     local local_annotations = sidecar:readSetting("annotations", {}) or {}
     local seeded = false
+    local current_keys = {}
+    for _, ann in ipairs(local_annotations) do
+        if ann.zoteroKey then current_keys[ann.zoteroKey] = ann end
+    end
     for _, ann in ipairs(local_annotations) do
         if ann.zoteroKey and not ann.zoteroSyncedFingerprint then
             local previous = API.getItem(ann.zoteroKey)
@@ -3573,6 +3577,15 @@ function API.pullAnnotationsForAttachment(key, file_path)
         sidecar:flush()
     end
 
+    local reload_needed = false
+    for _, item in ipairs(fetched) do
+        local old = current_keys[item.key]
+        if old == nil or
+            ((tonumber(old.zoteroVersion) or 0) < (tonumber(item.version) or 0)
+             and old.zoteroSyncedFingerprint == Annotations.fingerprint(old)) then
+            reload_needed = true
+        end
+    end
     local db = API.openDB()
     local stmt_item = db:prepare(ZOTERO_DB_UPDATE_ITEM)
     local stmt_data = db:prepare(ZOTERO_DB_UPDATE_ITEMDATA)
@@ -3600,7 +3613,7 @@ function API.pullAnnotationsForAttachment(key, file_path)
     end
     logger.info("Zotero: pulled " .. tostring(#fetched)
         .. " annotation(s) for attachment " .. tostring(key))
-    return true, #fetched
+    return true, reload_needed, #fetched
 end
 
 -- Search annotations across the local library (itemAnnotations + itemData JSON).
