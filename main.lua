@@ -473,8 +473,12 @@ function Plugin:syncOpenDocumentAnnotations(readerui, opts)
 
                 -- FETCH first: re-link remote keys before any Kindle → Zotero
                 -- create/update request, so existing marks are not duplicated.
+                local skip_keys = {}
+                for _, key_to_skip in ipairs(planned.local_deleted) do
+                    skip_keys[key_to_skip] = true
+                end
                 local pull_ok, pull_info, remote_count =
-                    ZoteroAPI.pullAnnotationsForAttachment(key, file_path)
+                    ZoteroAPI.pullAnnotationsForAttachment(key, file_path, skip_keys)
                 if not pull_ok then
                     error_message = "Zotero pull failed: " .. tostring(pull_info)
                     return
