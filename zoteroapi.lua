@@ -1800,8 +1800,15 @@ function API.fetchZoteroItems(since, progress_callback)
                 logger.info("Zotero: Processing deleted item: " .. deleted_key)
                 local res = stmt_get_ItemVersion:reset():bind(deleted_key):step()
                 if res ~= nil then
-                    logger.info("Zotero: Deleting item from local database: " .. deleted_key)
-                    stmt_delete_item:reset():bind(deleted_key):step()
+                    local cached = API.getItem(deleted_key)
+                    if cached and cached.data and cached.data.itemType == "annotation" then
+                        -- Preserve cached annotation data for recovery until the
+                        -- accidental Kindle-side deletions are reconciled.
+                        logger.warn("Zotero: Remote annotation is trashed; preserving cached annotation " .. deleted_key)
+                    else
+                        logger.info("Zotero: Deleting non-annotation item from local database: " .. deleted_key)
+                        stmt_delete_item:reset():bind(deleted_key):step()
+                    end
                 end
             end
         end
