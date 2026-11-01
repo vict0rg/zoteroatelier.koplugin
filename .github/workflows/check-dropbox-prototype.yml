@@ -78,3 +78,4 @@ jobs:
           bash -n tools/restaurar_selecao_sem_exclusao_kindle.sh
           bash -n tools/atualizar_atelier_kindle_anotacoes_2026-11-01.sh
           bash -n tools/atualizar_atelier_kindle_upload_2026-11-01.sh
+          bash -n tools/instalar_exclusoes_confirmadas_kindle.sh
