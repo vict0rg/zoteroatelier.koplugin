@@ -73,4 +73,26 @@ checkAcceptedColor("cyan", "#2ea8e5")
 checkAcceptedColor("olive", "#5fb236")
 checkAcceptedColor("gray", "#aaaaaa")
 checkAcceptedColor("red", "#ff6666")
+-- Exact geometry prevents duplicate posts after a KOReader reload loses
+-- the Zotero annotation key. Same text on a different page/position is distinct.
+local incoming = {
+    page=4, drawer="lighten", text="Existing Zotero highlight", note="",
+    pboxes={{x=41,y=53,w=120,h=11}},
+}
+local old = {
+    page=4, drawer="lighten", text="Existing Zotero highlight", note="",
+    pboxes={{x=41.2,y=52.9,w=120.1,h=11}}, -- KOReader rounded position
+}
+local other = {
+    page=4, drawer="lighten", text="Existing Zotero highlight", note="",
+    pboxes={{x=300,y=53,w=120,h=11}},
+}
+assert(Annotations.findEquivalentAnnotation({old,other},incoming,false)==1,
+    "Imported Zotero mark must match an existing unkeyed Kindle highlight")
+assert(Annotations.findEquivalentAnnotation({other},incoming,false)==nil,
+    "Same text elsewhere on the page must remain an independent highlight")
+old.zoteroKey="LINKED123"
+assert(Annotations.findEquivalentAnnotation({old},incoming,false)==nil,
+    "Already-linked highlights cannot be stolen by another remote key")
+assert(Annotations.findEquivalentAnnotation({old},incoming,true)==1)
 print("PASS: PDF page conversion and Zotero canonical palette avoid HTTP 400")
