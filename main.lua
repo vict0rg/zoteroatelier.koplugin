@@ -25,6 +25,7 @@ local lfs = require("libs/libkoreader-lfs")
 local logger = require("logger")
 local NetworkMgr = require("ui/network/manager")
 local DocSettings = require("docsettings")
+local ConfirmBox = require("ui/widget/confirmbox")
 local JSON = require("json")
 local Trapper = require("frontend/ui/trapper")
 
@@ -401,7 +402,7 @@ function Plugin:syncOpenDocumentAnnotations(readerui, opts)
         return
     end
     if self._zotero_document_sync_busy then
-        logger.warn("Zotero: document annotation sync already active; ignoring overlapping request")
+        logger.warn("Zotero: document sync already in progress")
         return
     end
     local file_path = readerui.document.file
@@ -416,9 +417,8 @@ function Plugin:syncOpenDocumentAnnotations(readerui, opts)
         return
     end
 
-    -- KOReader is the authority for *unsaved local changes*; persist once
-    -- before the network request. Never save the stale reader state AFTER
-    -- a remote annotation import.
+    -- Persist current live annotations BEFORE comparing a durable baseline.
+    -- Never persist stale reader memory after a Zotero pull.
     if readerui.annotation and readerui.annotation.annotations and readerui.doc_settings then
         readerui.doc_settings:saveSetting("annotations", readerui.annotation.annotations)
         readerui.doc_settings:flush()
@@ -426,54 +426,134 @@ function Plugin:syncOpenDocumentAnnotations(readerui, opts)
 
     self._zotero_document_sync_busy = true
     NetworkMgr:runWhenOnline(function()
-        local ok, error_message, n_received = false, nil, 0
-        local upload_fails, update_fails = 0, 0
-        local operation_ok, exception = pcall(function()
-            local pull_ok, pull_info, remote_count =
-                ZoteroAPI.pullAnnotationsForAttachment(key, file_path)
-            if not pull_ok then
-                error_message = "Zotero pull failed: " .. tostring(pull_info)
-                return
+        -- A snapshot must exist from an earlier SUCCESSFUL manual sync; a new
+        -- installation cannot infer deletes from the old state of the PDF.
+        local planned_ok, planned, plan_error = pcall(
+            ZoteroAPI.planAnnotationDeletions, key, file_path)
+        if not planned_ok or planned == nil then
+            self._zotero_document_sync_busy = false
+            local reason = planned_ok and plan_error or planned
+            logger.err("Zotero: deletion safety preflight failed: ", reason)
+            if opts.notify then
+                UIManager:show(InfoMessage:new({
+                    text = _("Sync stopped safely; no annotations deleted.")
+                        .. "\n" .. tostring(reason), timeout = 8,
+                    icon = "notice-warning",
+                }))
             end
-            n_received = tonumber(remote_count) or 0
-            -- Pull reconciles missing local Zotero keys BEFORE createItems,
-            -- avoiding a duplicate POST of a previously imported highlight.
-            local new_fails, deletion_fails, changed_fails =
-                ZoteroAPI.syncAnnotationsForAttachment(key, file_path)
-            upload_fails = tonumber(new_fails) or 0
-            update_fails = tonumber(changed_fails) or 0
-            if upload_fails > 0 or update_fails > 0
-                or (tonumber(deletion_fails) or 0) > 0 then
-                error_message = "Some annotation uploads failed ("
-                    .. tostring(upload_fails + update_fails) .. ")"
-            else
+            return
+        end
+
+        local local_deletes = #planned.local_deleted
+        local remote_deletes = #planned.remote_deleted
+        local function performSync()
+            local ok, error_message, n_received = false, nil, 0
+            local operation_ok, exception = pcall(function()
+                if local_deletes + remote_deletes > 0 then
+                    local deleted, delete_err =
+                        ZoteroAPI.applyConfirmedAnnotationDeletions(planned)
+                    if not deleted then
+                        error_message = "Deletion could not be confirmed: "
+                            .. tostring(delete_err)
+                        return
+                    end
+                end
+
+                -- FETCH first: re-link remote keys before any Kindle → Zotero
+                -- create/update request, so existing marks are not duplicated.
+                local pull_ok, pull_info, remote_count =
+                    ZoteroAPI.pullAnnotationsForAttachment(key, file_path)
+                if not pull_ok then
+                    error_message = "Zotero pull failed: " .. tostring(pull_info)
+                    return
+                end
+                n_received = tonumber(remote_count) or 0
+                local create_fails, delete_fails, update_fails =
+                    ZoteroAPI.syncAnnotationsForAttachment(key, file_path)
+                local failures = (tonumber(create_fails) or 0)
+                    + (tonumber(delete_fails) or 0)
+                    + (tonumber(update_fails) or 0)
+                if failures > 0 then
+                    error_message = "Some annotation uploads/updates failed ("
+                        .. tostring(failures) .. ")"
+                    return
+                end
+
+                -- Only AFTER a successful full cycle can paired keys be used
+                -- as proof of previous existence on both devices next time.
+                local saved, save_err =
+                    ZoteroAPI.saveConfirmedAnnotationBaseline(key, file_path)
+                if not saved then
+                    error_message = "Annotation baseline could not be saved: "
+                        .. tostring(save_err)
+                    return
+                end
                 ok = true
+            end)
+            self._zotero_document_sync_busy = false
+            if not operation_ok then
+                ok = false
+                error_message = tostring(exception)
+                logger.err("Zotero: document annotation sync failed: ", exception)
             end
-        end)
-        self._zotero_document_sync_busy = false
-        if not operation_ok then
-            ok = false
-            error_message = tostring(exception)
-            logger.err("Zotero: bidirectional document sync crashed: ", exception)
+
+            -- KOReader:reloadDocument() performs an onClose() save. Our
+            -- after_close callback re-applies the imported sidecar snapshot.
+            -- Never reload after the reader has switched to another document.
+            if operation_ok and readerui.document
+                and readerui.document.file == file_path then
+                self:reloadReaderAnnotations(readerui)
+            end
+
+            if opts.notify then
+                local msg = ok
+                    and (_("Annotations synchronized. Remote entries checked: ")
+                        .. tostring(n_received)
+                        .. ". " .. _("Confirmed deletions:")
+                        .. " " .. tostring(local_deletes + remote_deletes))
+                    or (_("Annotation sync incomplete; check the KOReader log.")
+                        .. "\n" .. tostring(error_message or "unknown error"))
+                UIManager:show(InfoMessage:new({
+                    text = msg, timeout = 8,
+                    icon = ok and "notice-info" or "notice-warning",
+                }))
+            end
         end
 
-        -- Reload only after *successful pull*, using the after-close snapshot
-        -- to prevent the KOReader shutdown sequence erasing imported keys.
-        if operation_ok and readerui.document and readerui.document.file == file_path then
-            self:reloadReaderAnnotations(readerui)
+        if local_deletes + remote_deletes == 0 then
+            performSync()
+            return
         end
-
-        if opts.notify then
-            local msg = ok
-                and (_("Zotero annotation synchronization completed. Remote annotations checked: ")
-                    .. tostring(n_received))
-                or (_("Zotero annotation synchronization incomplete. Local notes preserved.")
-                    .. "\n" .. tostring(error_message or "See KOReader log"))
-            UIManager:show(InfoMessage:new({
-                text = msg, timeout = 7,
-                icon = ok and "notice-info" or "notice-warning",
-            }))
-        end
+        -- No deletion is ever issued by the plugin without this explicit
+        -- confirmation. Both actions affect annotations only, NEVER PDFs.
+        local prompt = _("Confirm annotation deletions for this document?")
+            .. "\n\n"
+            .. _("Deleted on Kindle, to remove from Zotero:")
+            .. " " .. tostring(local_deletes)
+            .. "\n"
+            .. _("Deleted on Zotero, to remove from Kindle:")
+            .. " " .. tostring(remote_deletes)
+            .. "\n\n"
+            .. _("Only annotations verified on BOTH devices in an earlier sync qualify.")
+            .. "\n"
+            .. _("Cancel preserves all remote annotations and stops this sync.")
+        local box = ConfirmBox:new({
+            text = prompt,
+            ok_text = _("Confirm these deletions"),
+            ok_callback = function()
+                -- Ensure the user did not switch PDFs before confirming.
+                if not readerui.document or readerui.document.file ~= file_path then
+                    self._zotero_document_sync_busy = false
+                    return
+                end
+                performSync()
+            end,
+            cancel_callback = function()
+                self._zotero_document_sync_busy = false
+                logger.info("Zotero: user cancelled pending annotation deletions")
+            end,
+        })
+        UIManager:show(box)
     end)
 end
 
