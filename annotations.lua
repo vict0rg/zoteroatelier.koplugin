@@ -488,10 +488,23 @@ function Annotations.convertZoteroToKOReader(annotation, page_bbox)
     logger.info("=== END RECEIVING ANNOTATION ===")
     logger.info("")
 
+    koAnnotation.zoteroSyncedFingerprint = Annotations.fingerprint(koAnnotation)
     return koAnnotation
 end
 
 -- Detect whether a local KOReader annotation differs from the Zotero item data.
+-- Fingerprint of the KOReader-visible fields. Stored only after a confirmed
+-- remote import/upload; used to avoid overwriting unsent local edits.
+function Annotations.fingerprint(ann)
+    local fields = {ann.drawer or "", ann.color or "", ann.text or "", ann.note or ""}
+    local out = {}
+    for i, value in ipairs(fields) do
+        value = tostring(value)
+        out[i] = tostring(#value) .. ":" .. value
+    end
+    return table.concat(out, "|")
+end
+
 function Annotations.annotationNeedsUpdate(local_ann, zotero_item)
     if local_ann == nil or zotero_item == nil or zotero_item.data == nil then
         return false
@@ -620,6 +633,7 @@ function Annotations.convertZoteroToKOReaderEpub(annotation)
     if annotation.data.annotationComment and annotation.data.annotationComment ~= "" then
         koAnnotation["note"] = annotation.data.annotationComment
     end
+    koAnnotation.zoteroSyncedFingerprint = Annotations.fingerprint(koAnnotation)
     return koAnnotation
 end
 
@@ -720,6 +734,7 @@ function Annotations.createAnnotations(file_path, key, creation_callback)
             assert(k_index ~= nil)
             k_annotations[k_index].zoteroKey = v.key
             k_annotations[k_index].zoteroVersion = v.version
+            k_annotations[k_index].zoteroSyncedFingerprint = Annotations.fingerprint(k_annotations[k_index])
             cnt = cnt + 1
             logger.info("Zotero: New Zotero annotation created: ", JSON.encode(v))
         end
@@ -760,11 +775,18 @@ function Annotations.updateAnnotations(file_path, key, update_callback, get_item
                 remote = get_item_callback(ann.zoteroKey)
             end
             if remote and Annotations.annotationNeedsUpdate(ann, remote) then
-                local pageno = Annotations.getAnnotationPage(ann)
+                -- A newer Zotero edit must not be overwritten with a stale Kindle
+                -- version. Keep the local annotation and log a conflict instead.
+                if tonumber(remote.version) ~= tonumber(ann.zoteroVersion) then
+                    logger.warn("Zotero: annotation " .. tostring(ann.zoteroKey)
+                        .. " changed remotely; deferring local update without data loss")
+                else
+                    local pageno = Annotations.getAnnotationPage(ann)
                 if is_pdf and pageno then
                     pages[pageno] = true
                 end
-                table.insert(z_updates, { index = i, ann = ann, remote = remote })
+                    table.insert(z_updates, { index = i, ann = ann, remote = remote })
+                end
             end
         end
     end
@@ -821,6 +843,8 @@ function Annotations.updateAnnotations(file_path, key, update_callback, get_item
                 if v.version then
                     k_annotations[k_index].zoteroVersion = v.version
                 end
+                k_annotations[k_index].zoteroSyncedFingerprint =
+                    Annotations.fingerprint(k_annotations[k_index])
                 cnt = cnt + 1
             end
         end

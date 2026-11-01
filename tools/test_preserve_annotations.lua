@@ -20,7 +20,7 @@ assert(not attachment_sync:find("API.deleteItems(", 1, true),
     "Unsafe: absent SDR highlights may not trigger Zotero DELETE")
 assert(attachment_sync:find("Remote annotation is absent from this SDR; preserving item",1,true))
 local attach = between(api,
-    "function API.attachItemAnnotations(item, annotation_callback, filePathOverride)",
+    "function API.attachItemAnnotations(item, annotation_callback, filePathOverride, force, allowed_keys)",
     "-- Search annotations across the local library")
 assert(not attach:find("table.remove(koreaderAnnotations",1,true),
     "Unsafe: stale Zotero cache may not delete Kindle highlights")
@@ -34,6 +34,7 @@ local open_sync = between(main,
     "function Plugin:onReaderReady(readerui)")
 assert(open_sync:find("total_fails",1,true),
     "Unsafe: upload errors must not display success")
-assert(open_sync:find("does not fetch annotations from Zotero",1,true),
-    "Unsafe: UI must not misrepresent push-only as two-way sync")
+assert(open_sync:find("opts.pull",1,true)
+    and open_sync:find("ZoteroAPI.pullAnnotationsForAttachment",1,true),
+    "Unsafe: two-way sync must actually fetch remote annotations before reporting success")
 print("PASS: missing sidecars cannot delete remote/local highlights; sync failure is visible")

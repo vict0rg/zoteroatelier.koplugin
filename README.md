@@ -49,6 +49,27 @@ Se a montagem USB não for `/media/$USER/Kindle`, informe o caminho de montagem 
 
 Para instalações novas e configuração de Dropbox, consulte o [guia detalhado em português](doc/guia-kindle-dropbox-pt-BR.md). Configuração de credenciais: [documentação de desenvolvimento](doc/dropbox-on-demand.md). O módulo do Dropbox usa OAuth PKCE e permissão **`files.content.read`**, sem escrita no Dropbox.
 
+## Sincronização bidirecional de anotações — correção de segurança (01/11/2026)
+
+**Problema confirmado:** a versão anterior inferia exclusões no Zotero a partir de destaques ausentes no arquivo `.sdr`, o que apagou anotações. Também enviava destaques ao Zotero, mas o menu de sincronização do documento não buscava as novas anotações daquele anexo no servidor.
+
+**Correção atual:**
+
+- **Kindle → Zotero:** envia novos destaques e sublinhados e, para edições de anotação existente, confere a versão remota antes de sobrescrever.
+- **Zotero → Kindle:** lê diretamente os itens filhos do anexo por `GET /items/{chave}/children?itemType=annotation` e importa as novas anotações no `.sdr`. Recarrega o documento quando o conteúdo foi atualizado.
+- **Preservação:** ausência no `.sdr` não provoca `DELETE` no Zotero. Alterações conflitantes da mesma anotação são preservadas, com aviso no log; a exclusão bidirecional intencional fica desativada por segurança.
+- **Limite importante:** a integração passou em testes automatizados com respostas simuladas da API. A confirmação definitiva depende de testar em um Kindle real com uma anotação criada em cada dispositivo. O plugin não sincroniza as próprias alterações do PDF via Dropbox.
+
+Para atualizar apenas os módulos de sincronização (`zoteroapi.lua`, `annotations.lua`, `main.lua`) no Kindle via USB, com KOReader completamente fechado:
+
+```bash
+curl -fLsS https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/master/tools/atualizar_atelier_kindle_upload_2026-11-01.sh -o ~/Downloads/atualizar_atelier_kindle_upload_2026-11-01.sh && bash ~/Downloads/atualizar_atelier_kindle_upload_2026-11-01.sh
+```
+
+O instalador verifica o ponto de montagem, baixa os módulos para uma pasta temporária, verifica assinaturas esperadas, copia os três módulos anteriores para um diretório de backup e só então substitui os arquivos. Não modifica PDFs, EPUBs, `.sdr`, banco SQLite nem credenciais.
+
+**Validação no Kindle:** depois de ejetar e reiniciar o KOReader, faça um destaque de teste no Kindle e sincronize o documento; confira no Zotero desktop. Depois, crie outro destaque no mesmo PDF usando o Zotero desktop, sincronize o Zotero com seu servidor e execute novamente **Sync document annotations** no Kindle. Confira se o novo destaque aparece e se nenhum anterior desapareceu. Mantenha o backup do Kindle até concluir o teste.
+
 ## Correção de falhas de envio de anotações (01/11/2026)
 
 Se o Kindle concluir a sincronização com um aviso como `annotation upload failure(s)`, após a correção anterior de número de página, há um segundo problema possível: a API Zotero pode responder **HTTP 412** quando a versão de escrita ficou desatualizada.

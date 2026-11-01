@@ -3355,7 +3355,7 @@ end
 
 -- Attach Zotero annotations for specified item
 -- by adding them to document settings
-function API.attachItemAnnotations(item, annotation_callback, filePathOverride)
+function API.attachItemAnnotations(item, annotation_callback, filePathOverride, force, allowed_keys)
     local contentType = item.data and item.data.contentType
     local is_pdf = contentType == "application/pdf"
     local is_epub = contentType == "application/epub+zip"
@@ -3384,7 +3384,7 @@ function API.attachItemAnnotations(item, annotation_callback, filePathOverride)
     local lastSyncedLibVersion = docSettings:readSetting("zoteroLibVersion", 0)
     local libVersion = API.getUserLibraryVersion()
 
-    if lastSyncedLibVersion < libVersion then
+    if force or lastSyncedLibVersion < libVersion then
         --print("Checking item\'s annotations in Zotero database")
         -- Scan zotero annotations.
         local db = API.openDB()
@@ -3393,8 +3393,10 @@ function API.attachItemAnnotations(item, annotation_callback, filePathOverride)
         local row = stmt_get_ItemAnnotationInfo:bind(itemKey):step()
         while row ~= nil do
             local key = row[1]
-            zoteroItems[key] = { ["version"] = tonumber(row[2]), ["syncedVersion"] = tonumber(row[3]) }
-            zotCount = zotCount + 1
+            if allowed_keys == nil or allowed_keys[key] then
+                zoteroItems[key] = { ["version"] = tonumber(row[2]), ["syncedVersion"] = tonumber(row[3]) }
+                zotCount = zotCount + 1
+            end
             row = stmt_get_ItemAnnotationInfo:step(row)
         end
         stmt_get_ItemAnnotationInfo:close()
@@ -3461,10 +3463,15 @@ function API.attachItemAnnotations(item, annotation_callback, filePathOverride)
                             logger.info("Zotero: Converting annotation " .. key .. " on page " .. page)
                             if localZotAnn[key] == nil then
                                 table.insert(koreaderAnnotations, Annotations.convertZoteroToKOReader(ann_item, page_bbox))
-                            elseif localZotAnn[key].version < itemInfo.version then
-                                logger.info("Zotero: Updating annotation " .. key)
-                                koreaderAnnotations[localZotAnn[key].position] = Annotations.convertZoteroToKOReader(ann_item,
-                                    page_bbox)
+                            elseif (tonumber(localZotAnn[key].version) or 0) < (tonumber(itemInfo.version) or 0) then
+                                local existing = koreaderAnnotations[localZotAnn[key].position]
+                                if existing.zoteroSyncedFingerprint == Annotations.fingerprint(existing) then
+                                    logger.info("Zotero: Updating unchanged local annotation from remote " .. key)
+                                    koreaderAnnotations[localZotAnn[key].position] =
+                                        Annotations.convertZoteroToKOReader(ann_item, page_bbox)
+                                else
+                                    logger.warn("Zotero: local annotation possibly edited; preserving conflict " .. key)
+                                end
                             end
                         end
                     end
@@ -3478,9 +3485,14 @@ function API.attachItemAnnotations(item, annotation_callback, filePathOverride)
                 if ann_item and ann_item.data then
                     if localZotAnn[key] == nil then
                         table.insert(koreaderAnnotations, Annotations.convertZoteroToKOReaderEpub(ann_item))
-                    elseif localZotAnn[key].version < itemInfo.version then
-                        koreaderAnnotations[localZotAnn[key].position] =
-                            Annotations.convertZoteroToKOReaderEpub(ann_item)
+                    elseif (tonumber(localZotAnn[key].version) or 0) < (tonumber(itemInfo.version) or 0) then
+                        local existing = koreaderAnnotations[localZotAnn[key].position]
+                        if existing.zoteroSyncedFingerprint == Annotations.fingerprint(existing) then
+                            koreaderAnnotations[localZotAnn[key].position] =
+                                Annotations.convertZoteroToKOReaderEpub(ann_item)
+                        else
+                            logger.warn("Zotero: local EPUB annotation possibly edited; preserving conflict " .. key)
+                        end
                     end
                 end
             end
@@ -3499,6 +3511,109 @@ function API.attachItemAnnotations(item, annotation_callback, filePathOverride)
     -- Write new lib version to sdr file
     docSettings:saveSetting("zoteroLibVersion", libVersion)
     docSettings:flush()
+end
+
+-- Explicit non-destructive pull of PDF/EPUB annotation children from Zotero.
+-- The incremental library cache is not proof that a document has all its
+-- annotations. GET /items/<attachment>/children is authoritative for this item.
+-- No remote DELETE is ever inferred or performed here.
+function API.pullAnnotationsForAttachment(key, file_path)
+    if not key or not file_path or not file_exists(file_path) then
+        return false, "missing local document"
+    end
+    local access_error = API.verifyZoteroAccess()
+    if access_error then return false, access_error end
+
+    local fetched = {}
+    local remote_keys = {}
+    local start = 0
+    local page_size = 100
+    -- Avoid silently treating a partly downloaded collection as complete.
+    while start < 10000 do
+        local url = API.userLibraryURL .. "/items/" .. tostring(key)
+            .. "/children?itemType=annotation&limit=" .. page_size .. "&start=" .. start
+        local items, fetch_error = API.getZoteroData(url)
+        if type(items) ~= "table" then
+            logger.warn("Zotero: could not pull attachment annotations: " .. tostring(fetch_error))
+            return false, "Zotero annotation download failed: " .. tostring(fetch_error)
+        end
+        local count = 0
+        for _, item in pairs(items) do
+            if type(item) == "table" and item.key and item.data
+                and item.data.itemType == "annotation"
+                and tostring(item.data.parentItem or "") == tostring(key)
+                and (item.data.annotationType == "highlight"
+                    or item.data.annotationType == "underline") then
+                fetched[#fetched + 1] = item
+                remote_keys[item.key] = true
+            end
+            count = count + 1
+        end
+        if count < page_size then break end
+        start = start + page_size
+        if start >= 10000 then return false, "Too many annotation pages; pull aborted safely" end
+    end
+
+    -- Seed fingerprints only when the existing Kindle highlight still equals
+    -- the previously cached Zotero value. Unknown edits are preserved.
+    local sidecar = DocSettings:open(file_path)
+    local local_annotations = sidecar:readSetting("annotations", {}) or {}
+    local seeded = false
+    local current_keys = {}
+    for _, ann in ipairs(local_annotations) do
+        if ann.zoteroKey then current_keys[ann.zoteroKey] = ann end
+    end
+    for _, ann in ipairs(local_annotations) do
+        if ann.zoteroKey and not ann.zoteroSyncedFingerprint then
+            local previous = API.getItem(ann.zoteroKey)
+            if previous and not Annotations.annotationNeedsUpdate(ann, previous) then
+                ann.zoteroSyncedFingerprint = Annotations.fingerprint(ann)
+                seeded = true
+            end
+        end
+    end
+    if seeded then
+        sidecar:saveSetting("annotations", local_annotations)
+        sidecar:flush()
+    end
+
+    local reload_needed = false
+    for _, item in ipairs(fetched) do
+        local old = current_keys[item.key]
+        if old == nil or
+            ((tonumber(old.zoteroVersion) or 0) < (tonumber(item.version) or 0)
+             and old.zoteroSyncedFingerprint == Annotations.fingerprint(old)) then
+            reload_needed = true
+        end
+    end
+    local db = API.openDB()
+    local stmt_item = db:prepare(ZOTERO_DB_UPDATE_ITEM)
+    local stmt_data = db:prepare(ZOTERO_DB_UPDATE_ITEMDATA)
+    for _, item in ipairs(fetched) do
+        stmt_item:reset():bind(1, "annotation", item.key, item.version):step()
+        stmt_data:reset():bind(item.key, JSON.encode(item)):step()
+    end
+    stmt_item:close()
+    stmt_data:close()
+    if #fetched > 0 then
+        local mapping = {}
+        for _, item in ipairs(fetched) do mapping[item.key] = key end
+        API.setAnnotations(mapping)
+    end
+
+    local attachment = API.getItem(key)
+    if not attachment then return false, "attachment metadata unavailable" end
+    local ok, err = pcall(API.attachItemAnnotations, attachment, nil, file_path, true, remote_keys)
+    if not ok then
+        logger.err("Zotero: annotation pull/import crashed: ", err)
+        return false, tostring(err)
+    end
+    if type(err) == "string" and err:find("^Error") then
+        return false, err
+    end
+    logger.info("Zotero: pulled " .. tostring(#fetched)
+        .. " annotation(s) for attachment " .. tostring(key))
+    return true, reload_needed, #fetched
 end
 
 -- Search annotations across the local library (itemAnnotations + itemData JSON).
