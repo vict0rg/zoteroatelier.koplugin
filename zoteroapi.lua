@@ -2036,17 +2036,12 @@ function API.syncAllItems(progress_callback)
     end
 
     local err
-    if since > 0 then
-        -- try to sync back first, so that any changes will be recorded when we update the db later on
-        if API.access.user.write and API.access.user.notes then
-            local upload_fails, delete_fails = API.syncAnnotations()
-            sync_stats.annotation_upload_fails = upload_fails or 0
-            sync_stats.annotation_delete_fails = delete_fails or 0
-        else
-            err = "Zotero: API key does not have write access!"
-            logger.warn(err)
-        end
-    end
+    -- DATA SAFETY: catalogue refresh is READ-ONLY. Previously it silently
+    -- uploaded highlights from every cached PDF and could re-create remote
+    -- annotations whose keys were lost during a KOReader reload.
+    -- A user-initiated "Sync document annotations" pulls remote keys first,
+    -- reconciles duplicates, and only then writes local changes.
+    logger.info("Zotero: library catalogue refresh will not upload annotations")
 
     --[[
 	-- try downloading My publications:
