@@ -354,108 +354,130 @@ function Plugin:onDispatcherRegisterActions()
     })
 end
 
+-- KOReader saves its *in-memory* ReaderAnnotation list during
+-- reloadDocument():onClose(). Without the after_close callback, that save
+-- overwrites freshly imported Zotero highlights from the sidecar.
 function Plugin:reloadReaderAnnotations(readerui)
-    if readerui and readerui.reloadDocument then
-        UIManager:scheduleIn(0.1, function()
-            readerui:reloadDocument()
-        end)
+    if not readerui or not readerui.reloadDocument or not readerui.document then
+        return false
     end
+    local file_path = readerui.document.file
+    local latest = DocSettings:open(file_path)
+    local annotation_snapshot = latest:readSetting("annotations", {}) or {}
+    UIManager:scheduleIn(0.1, function()
+        if not readerui.document or readerui.document.file ~= file_path then
+            return
+        end
+        -- This callback runs AFTER KOReader saves the old in-memory state
+        -- but BEFORE opening the document again.
+        readerui:reloadDocument(function(closed_file)
+            if closed_file == file_path then
+                local fresh = DocSettings:open(file_path)
+                fresh:saveSetting("annotations", annotation_snapshot)
+                fresh:flush()
+                logger.info("Zotero: restored authoritative sidecar after KOReader close")
+            end
+        end)
+    end)
+    return true
 end
 
+-- Explicit manual sync of the current document: fetch first, link existing
+-- annotations by key/position, then upload genuinely new Kindle highlights.
+-- Automatic close/open hooks deliberately do not write to Zotero.
 function Plugin:syncOpenDocumentAnnotations(readerui, opts)
     opts = opts or {}
     if not init_done or not readerui or not readerui.document or not readerui.document.file then
         return
     end
+    if self._zotero_document_sync_busy then
+        logger.warn("Zotero: document annotation sync already active; ignoring overlapping request")
+        return
+    end
     local file_path = readerui.document.file
     local key = ZoteroAPI.findAttachmentKeyByFilePath(file_path)
     if not key then
+        if opts.notify then
+            UIManager:show(InfoMessage:new({
+                text = _("Zotero attachment not found for this document."),
+                timeout = 6, icon = "notice-warning",
+            }))
+        end
         return
     end
-    -- Flush live annotations to sidecar before upload
+
+    -- KOReader is the authority for *unsaved local changes*; persist once
+    -- before the network request. Never save the stale reader state AFTER
+    -- a remote annotation import.
     if readerui.annotation and readerui.annotation.annotations and readerui.doc_settings then
         readerui.doc_settings:saveSetting("annotations", readerui.annotation.annotations)
         readerui.doc_settings:flush()
     end
+
+    self._zotero_document_sync_busy = true
     NetworkMgr:runWhenOnline(function()
-        local ok, upload_fails, delete_fails, update_fails = pcall(function()
-            return ZoteroAPI.syncAnnotationsForAttachment(key, file_path)
-        end)
-        local total_fails = (tonumber(upload_fails) or 0)
-            + (tonumber(delete_fails) or 0) + (tonumber(update_fails) or 0)
-        local pulled, changed, pull_count = false, false, 0
-        local pull_error = nil
-        if opts.pull then
-            local pull_call_ok, good, did_change, num = pcall(
-                ZoteroAPI.pullAnnotationsForAttachment, key, file_path)
-            pulled = pull_call_ok and good == true
-            if pulled then
-                changed = did_change == true
-                pull_count = tonumber(num) or 0
-                if changed and readerui.document and readerui.document.file == file_path then
-                    self:reloadReaderAnnotations(readerui)
-                end
+        local ok, error_message, n_received = false, nil, 0
+        local upload_fails, update_fails = 0, 0
+        local operation_ok, exception = pcall(function()
+            local pull_ok, pull_info, remote_count =
+                ZoteroAPI.pullAnnotationsForAttachment(key, file_path)
+            if not pull_ok then
+                error_message = "Zotero pull failed: " .. tostring(pull_info)
+                return
+            end
+            n_received = tonumber(remote_count) or 0
+            -- Pull reconciles missing local Zotero keys BEFORE createItems,
+            -- avoiding a duplicate POST of a previously imported highlight.
+            local new_fails, deletion_fails, changed_fails =
+                ZoteroAPI.syncAnnotationsForAttachment(key, file_path)
+            upload_fails = tonumber(new_fails) or 0
+            update_fails = tonumber(changed_fails) or 0
+            if upload_fails > 0 or update_fails > 0
+                or (tonumber(deletion_fails) or 0) > 0 then
+                error_message = "Some annotation uploads failed ("
+                    .. tostring(upload_fails + update_fails) .. ")"
             else
-                pull_error = pull_call_ok and tostring(did_change) or tostring(good)
-                logger.err("Zotero: remote annotation pull failed: ", pull_error)
+                ok = true
             end
+        end)
+        self._zotero_document_sync_busy = false
+        if not operation_ok then
+            ok = false
+            error_message = tostring(exception)
+            logger.err("Zotero: bidirectional document sync crashed: ", exception)
         end
-        if not ok or total_fails > 0 or (opts.pull and not pulled) then
-            logger.err("Zotero: document annotation upload did not fully complete; "
-                .. "fails=" .. tostring(total_fails) .. ", detail=" .. tostring(upload_fails))
-            if opts.notify then
-                UIManager:show(InfoMessage:new({
-                    text = _("Annotation synchronization incomplete. Local highlights preserved; check KOReader log.")
-                        .. (pull_error and ("\n" .. pull_error) or ""),
-                    timeout = 6,
-                    icon = "notice-warning",
-                }))
-            end
-        elseif opts.notify then
+
+        -- Reload only after *successful pull*, using the after-close snapshot
+        -- to prevent the KOReader shutdown sequence erasing imported keys.
+        if operation_ok and readerui.document and readerui.document.file == file_path then
+            self:reloadReaderAnnotations(readerui)
+        end
+
+        if opts.notify then
+            local msg = ok
+                and _("Zotero annotation synchronization completed.")
+                or (_("Zotero annotation synchronization incomplete. Local notes preserved.")
+                    .. "\n" .. tostring(error_message or "See KOReader log"))
             UIManager:show(InfoMessage:new({
-                text = opts.pull
-                    and _("Annotations sent and received from Zotero.") or
-                        _("Local annotations sent to Zotero."),
-                timeout = 5,
-                icon = "notice-info",
+                text = msg, timeout = 7,
+                icon = ok and "notice-info" or "notice-warning",
             }))
         end
     end)
 end
 
 function Plugin:onReaderReady(readerui)
-    if not init_done or not readerui or not readerui.document or not readerui.document.file then
-        return
-    end
-    local file_path = readerui.document.file
-    local key = ZoteroAPI.findAttachmentKeyByFilePath(file_path)
-    if not key then
-        return
-    end
-    local item = ZoteroAPI.getItem(key)
-    if not item then
-        return
-    end
-    -- Do not restore highlights from an old local SQLite catalogue here.
-    -- It can contain items deleted remotely and misses recent Zotero edits.
-    -- The scheduled online per-attachment GET below is authoritative.
-    logger.info("Zotero: Matched open document to attachment " .. key)
-    -- Upload local create/edit/delete shortly after open (sidecar may have pending changes)
-    UIManager:scheduleIn(1.0, function()
-        self:syncOpenDocumentAnnotations(readerui, { notify = false, pull = true })
-    end)
+    -- Do not automatically upload on document open. The reader may still
+    -- be initializing the live annotations, and a reload can call this hook.
 end
 
 function Plugin:onCloseDocument()
-    if self.ui then
-        self:syncOpenDocumentAnnotations(self.ui, { notify = false })
-    end
+    -- Never upload while KOReader is flushing old annotation state.
+    -- Explicit "Sync document annotations" is the only write entry point.
 end
 
 function Plugin:onCloseWidget()
-    if self.ui then
-        self:syncOpenDocumentAnnotations(self.ui, { notify = false })
-    end
+    -- Same safeguard for reader teardown and internal PDF reload.
 end
 
 function Plugin:init()
@@ -557,7 +579,7 @@ function Plugin:getZoteroSubMenu()
                     return self.ui ~= nil and self.ui.document ~= nil
                 end,
                 callback = function()
-                    self:syncOpenDocumentAnnotations(self.ui, { notify = true, pull = true })
+                    self:syncOpenDocumentAnnotations(self.ui, { notify = true })
                 end,
             },
             {
@@ -1526,13 +1548,8 @@ function Plugin:onZoteroSyncAction()
         end
         self.zotero_sync_in_progress = false
 
-        -- The catalogue sync refreshes the SQLite cache but not necessarily
-        -- the sidecar of the PDF currently open in KOReader. Explicitly pull
-        -- its annotation children as well; do not call this on document close.
-        if ok and self.ui and self.ui.document and self.ui.document.file then
-            self:syncOpenDocumentAnnotations(self.ui, {notify = false, pull = true})
-        end
-
+        -- Catalogue refresh does not silently publish/reconcile open-document
+        -- annotations. Use the explicit per-document command for two-way sync.
         local final_message
         if not ok then
             logger.err("Zotero synchronization failed: ", result)
