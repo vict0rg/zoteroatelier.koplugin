@@ -378,22 +378,25 @@ function Plugin:syncOpenDocumentAnnotations(readerui, opts)
         readerui.doc_settings:flush()
     end
     NetworkMgr:runWhenOnline(function()
-        local ok, err = pcall(function()
+        local ok, upload_fails, delete_fails, update_fails = pcall(function()
             return ZoteroAPI.syncAnnotationsForAttachment(key, file_path)
         end)
-        if not ok then
-            logger.err("Zotero: syncAnnotationsForAttachment failed: ", err)
+        local total_fails = (tonumber(upload_fails) or 0)
+            + (tonumber(delete_fails) or 0) + (tonumber(update_fails) or 0)
+        if not ok or total_fails > 0 then
+            logger.err("Zotero: document annotation upload did not fully complete; "
+                .. "fails=" .. tostring(total_fails) .. ", detail=" .. tostring(upload_fails))
             if opts.notify then
                 UIManager:show(InfoMessage:new({
-                    text = _("Annotation sync failed."),
-                    timeout = 3,
+                    text = _("Annotation upload incomplete. Local highlights preserved; check the KOReader log."),
+                    timeout = 6,
                     icon = "notice-warning",
                 }))
             end
         elseif opts.notify then
             UIManager:show(InfoMessage:new({
-                text = _("Annotations synced to Zotero."),
-                timeout = 2,
+                text = _("Local annotations sent to Zotero. This does not fetch annotations from Zotero."),
+                timeout = 5,
                 icon = "notice-info",
             }))
         end
