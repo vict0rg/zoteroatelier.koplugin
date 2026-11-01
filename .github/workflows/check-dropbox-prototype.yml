@@ -27,6 +27,7 @@ jobs:
           luac5.1 -p annotations.lua
           luac5.1 -p tools/test_annotation_page.lua
           luac5.1 -p tools/test_preserve_annotations.lua
+          luac5.1 -p tools/test_two_way_annotation_sync.lua
           luac5.1 -p tools/test_zotero_annotation_writes.lua
           luac5.1 -p zoteroapi.lua
           luac5.1 -p zotero_dropbox.lua
@@ -38,6 +39,9 @@ jobs:
       - name: Regress PDF annotation page-only conversion without network access
         run: |
           lua5.1 tools/test_annotation_page.lua
+      - name: Verify bidirectional Kindle Zotero annotation pull is safe
+        run: |
+          lua5.1 tools/test_two_way_annotation_sync.lua
       - name: Prevent destructive annotation deletion regressions
         run: |
           lua5.1 tools/test_preserve_annotations.lua
