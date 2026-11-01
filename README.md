@@ -49,6 +49,16 @@ Se a montagem USB não for `/media/$USER/Kindle`, informe o caminho de montagem 
 
 Para instalações novas e configuração de Dropbox, consulte o [guia detalhado em português](doc/guia-kindle-dropbox-pt-BR.md). Configuração de credenciais: [documentação de desenvolvimento](doc/dropbox-on-demand.md). O módulo do Dropbox usa OAuth PKCE e permissão **`files.content.read`**, sem escrita no Dropbox.
 
+## Correção de duplicatas e recarga de PDFs — 01/11/2026
+
+**Problema identificado em uso real:** o Kindle baixava destaques existentes do Zotero, mas ao reabrir o PDF o KOReader gravava de volta suas anotações antigas em memória, substituindo as anotações recém-importadas. O plugin também enviava anotações no fechamento e durante a sincronização geral, criando novos itens no Zotero quando as chaves tinham sido perdidas.
+
+A correção **puxa primeiro e só envia depois**, vincula pelo número da página, texto e geometria do destaque, e preserva uma cópia independente do `.sdr` **depois do fechamento interno do KOReader**, imediatamente antes da reabertura. Um destaque com histórico de sincronização, mas sem sua chave Zotero, não é enviado como novo.
+
+**Importante:** neste modo de segurança, a sincronização de anotações é **manual**, pelo menu `Sync document annotations` dentro do PDF aberto. O menu geral `Synchronize` atualiza o catálogo sem enviar anotações automaticamente. Abertura e fechamento de PDFs não fazem upload automático.
+
+O instalador de três módulos abaixo foi atualizado para conter essa correção (mesmo comando, novo conteúdo). Os testes agora simulam não apenas a API, mas também o fechamento do leitor que sobrescrevia o `.sdr`. Ainda é necessária validação com um Kindle real; não é garantido eliminar duplicatas já existentes no Zotero, que são preservadas para evitar exclusões indevidas.
+
 ## Sincronização bidirecional de anotações — correção de segurança (01/11/2026)
 
 **Problema confirmado:** a versão anterior inferia exclusões no Zotero a partir de destaques ausentes no arquivo `.sdr`, o que apagou anotações. Também enviava destaques ao Zotero, mas o menu de sincronização do documento não buscava as novas anotações daquele anexo no servidor.
