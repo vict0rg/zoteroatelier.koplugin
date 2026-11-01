@@ -20,7 +20,7 @@ assert(not attachment_sync:find("API.deleteItems(", 1, true),
     "Unsafe: absent SDR highlights may not trigger Zotero DELETE")
 assert(attachment_sync:find("Remote annotation is absent from this SDR; preserving item",1,true))
 local attach = between(api,
-    "function API.attachItemAnnotations(item, annotation_callback, filePathOverride)",
+    "function API.attachItemAnnotations(item, annotation_callback, filePathOverride, force, allowed_keys)",
     "-- Search annotations across the local library")
 assert(not attach:find("table.remove(koreaderAnnotations",1,true),
     "Unsafe: stale Zotero cache may not delete Kindle highlights")
