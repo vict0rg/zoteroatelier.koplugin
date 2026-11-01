@@ -50,4 +50,27 @@ check({ pos0 = { page = 7 } }, 7)
 check({ page = "unknown" }, 1)
 check({}, 1)
 assert(Annotations.makeSortIndex(nil, 0, 12):sub(1,5) == "00000")
-print("PASS: PDF page-only annotations convert safely to Zotero")
+-- Regress actual HTTP 400: six blue update payloads were rejected
+-- because the fork emitted #0066FF (not an accepted Zotero palette value).
+local function checkAcceptedColor(k_color, expected_hex)
+    local ann = {
+        pageno = 11, drawer = "lighten", color = k_color,
+        text = "Unchanged highlight", datetime = "2026-11-01 17:49:00",
+        pboxes = {{x=12, y=20, w=80, h=9}},
+    }
+    local converted = Annotations.convertKOReaderToZotero(ann, bbox, "PARENTKEY")
+    assert(converted.annotationColor == expected_hex,
+        "Invalid Zotero palette conversion for " .. k_color)
+    local remote = {data = {
+        annotationType = "highlight", annotationColor = expected_hex,
+        annotationText = "Unchanged highlight", annotationComment = "",
+    }}
+    assert(not Annotations.annotationNeedsUpdate(ann, remote),
+        "Unchanged Zotero highlight should not be re-uploaded for " .. k_color)
+end
+checkAcceptedColor("blue", "#2ea8e5")
+checkAcceptedColor("cyan", "#2ea8e5")
+checkAcceptedColor("olive", "#5fb236")
+checkAcceptedColor("gray", "#aaaaaa")
+checkAcceptedColor("red", "#ff6666")
+print("PASS: PDF page conversion and Zotero canonical palette avoid HTTP 400")
