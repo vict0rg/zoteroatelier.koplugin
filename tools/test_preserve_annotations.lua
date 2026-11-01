@@ -34,6 +34,7 @@ local open_sync = between(main,
     "function Plugin:onReaderReady(readerui)")
 assert(open_sync:find("total_fails",1,true),
     "Unsafe: upload errors must not display success")
-assert(open_sync:find("does not fetch annotations from Zotero",1,true),
-    "Unsafe: UI must not misrepresent push-only as two-way sync")
+assert(open_sync:find("opts.pull",1,true)
+    and open_sync:find("ZoteroAPI.pullAnnotationsForAttachment",1,true),
+    "Unsafe: two-way sync must actually fetch remote annotations before reporting success")
 print("PASS: missing sidecars cannot delete remote/local highlights; sync failure is visible")
