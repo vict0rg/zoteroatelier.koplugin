@@ -49,6 +49,22 @@ Se a montagem USB não for `/media/$USER/Kindle`, informe o caminho de montagem 
 
 Para instalações novas e configuração de Dropbox, consulte o [guia detalhado em português](doc/guia-kindle-dropbox-pt-BR.md). Configuração de credenciais: [documentação de desenvolvimento](doc/dropbox-on-demand.md). O módulo do Dropbox usa OAuth PKCE e permissão **`files.content.read`**, sem escrita no Dropbox.
 
+## Correção de falhas de envio de anotações (01/11/2026)
+
+Se o Kindle concluir a sincronização com um aviso como `annotation upload failure(s)`, após a correção anterior de número de página, há um segundo problema possível: a API Zotero pode responder **HTTP 412** quando a versão de escrita ficou desatualizada.
+
+Atualizamos o módulo de envio para recuperar a versão atual e tentar novamente **apenas** quando houver HTTP 412. Antes de repetir atualização de uma anotação existente, a versão individual é conferida, preservando mudanças mais recentes feitas no Zotero desktop. A versão da biblioteca usada para baixar atualizações permanece separada da versão usada para enviar, para não omitir alterações externas.
+
+Uma mensagem com oito falhas **não comprova** que todas foram HTTP 412; o registro do KOReader continua sendo necessário se restarem erros. As mensagens novas também indicam a categoria da falha.
+
+Para o Kindle com o Drop Sync instalado, usar somente a atualização pontual abaixo (KOReader fechado, USB conectado):
+
+```bash
+curl -fLsS https://raw.githubusercontent.com/vict0rg/zoteroatelier.koplugin/master/tools/atualizar_atelier_kindle_upload_2026-11-01.sh -o ~/Downloads/atualizar_atelier_kindle_upload_2026-11-01.sh && bash ~/Downloads/atualizar_atelier_kindle_upload_2026-11-01.sh
+```
+
+O instalador preserva banco SQLite, credenciais, PDFs, EPUBs e pastas `.sdr`, fazendo backup de `zoteroapi.lua` antes da substituição.
+
 ## Atualizações provenientes do projeto original
 
 O projeto original avançou após a criação deste fork, inclusive com melhorias nas anotações PDF/EPUB, interface, localização e tratamento de falhas. Mantemos uma integração **seletiva** para não quebrar o código de Dropbox, os caminhos de armazenamento e as ferramentas de instalação do Kindle.

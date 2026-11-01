@@ -2005,6 +2005,8 @@ end
 -- 3. same for items
 -- 4. downloading attachments for marked collections
 function API.syncAllItems(progress_callback)
+    API.lastAnnotationSyncError = nil
+    API._writeLibraryVersion = nil
     local callback = progress_callback or function() end
 
     -- Error tracking structure for sync summary
@@ -2111,7 +2113,10 @@ function API.syncAllItems(progress_callback)
         table.insert(parts, string.format("\n%d total error(s):", total_errors))
 
         if sync_stats.annotation_upload_fails > 0 then
-            table.insert(parts, string.format("- %d annotation upload failure(s)", sync_stats.annotation_upload_fails))
+            table.insert(parts, string.format("- %d annotation upload/update failure(s)", sync_stats.annotation_upload_fails))
+            if API.lastAnnotationSyncError then
+                table.insert(parts, "- Reason: " .. API.lastAnnotationSyncError)
+            end
         end
         if sync_stats.annotation_delete_fails > 0 then
             table.insert(parts, string.format("- %d annotation deletion failure(s)", sync_stats.annotation_delete_fails))
@@ -2897,6 +2902,96 @@ function API.syncAnnotationsForAttachment(key, file_path)
     return upload_fails, delete_fails, update_fails
 end
 
+-- Keep the server write version separate from the last fully downloaded
+-- library version. Advancing the sync cursor after an upload would skip
+-- unrelated Zotero desktop edits on the next incremental pull.
+local function zoteroWriteVersion()
+    return API._writeLibraryVersion or API.getUserLibraryVersion() or 0
+end
+
+local function noteZoteroWriteVersion(h)
+    local version = h and tonumber(h["last-modified-version"] or h["Last-Modified-Version"])
+    if version and version > tonumber(zoteroWriteVersion()) then
+        API._writeLibraryVersion = version
+    end
+end
+
+local function refreshWriteVersion()
+    local h = {}
+    for k, v in pairs(API.zoteroHeader or {}) do
+        if string.lower(tostring(k)) ~= "if-unmodified-since-version" then
+            h[k] = v
+        end
+    end
+    local url = API.userLibraryURL .. "/items?limit=1"
+    local r, status, response_headers = https.request({method = "HEAD", url = url, headers = h})
+    if r ~= 1 or tonumber(status) ~= 200 then
+        local sink = {}
+        r, status, response_headers = https.request({
+            method = "GET", url = url, headers = h, sink = ltn12.sink.table(sink)
+        })
+    end
+    if r ~= 1 or tonumber(status) ~= 200 then
+        return nil, "Cannot refresh Zotero version (HTTP " .. tostring(status) .. ")"
+    end
+    local version = response_headers
+        and tonumber(response_headers["last-modified-version"] or response_headers["Last-Modified-Version"])
+    if version == nil then
+        return nil, "Zotero did not return Last-Modified-Version"
+    end
+    API._writeLibraryVersion = version
+    return version
+end
+
+-- Retry a request only after a confirmed 412. For updates, verify that each
+-- individual annotation is unchanged on the server before retrying, so a newer
+-- desktop edit is never silently overwritten.
+local function postZoteroItems(url, request_json, is_update, requested_items)
+    local function post()
+        local headers = {}
+        for k, v in pairs(API.zoteroHeader or {}) do
+            if string.lower(tostring(k)) ~= "if-unmodified-since-version"
+               and string.lower(tostring(k)) ~= "content-length" then
+                headers[k] = v
+            end
+        end
+        headers["If-Unmodified-Since-Version"] = tostring(zoteroWriteVersion())
+        headers["Content-Type"] = "application/json"
+        local response = {}
+        local r, status, rh = https.request({
+            method = "POST", url = url, headers = headers,
+            sink = ltn12.sink.table(response), source = ltn12.source.string(request_json)
+        })
+        return r, status, rh, table.concat(response)
+    end
+
+    local r, status, rh, body = post()
+    if tonumber(status) == 412 then
+        logger.warn("Zotero: HTTP 412; refreshing write version for annotation batch")
+        local version, err = refreshWriteVersion()
+        if not version then
+            return 0, 412, {}, err
+        end
+        if is_update then
+            for _, item in ipairs(requested_items or {}) do
+                if not item.key or item.version == nil then
+                    return 0, 409, {}, "Annotation update requires a current item version; local changes preserved"
+                end
+                local remote, fetcherr = API.getZoteroData(API.userLibraryURL .. "/items/" .. item.key)
+                if not remote or tonumber(remote.version) ~= tonumber(item.version) then
+                    logger.warn("Zotero: annotation changed on server; not overwriting " .. tostring(item.key))
+                    return 0, 409, {}, "Annotation conflict with Zotero desktop; local changes preserved"
+                end
+            end
+        end
+        r, status, rh, body = post()
+    end
+    if r == 1 and tonumber(status) == 200 then
+        noteZoteroWriteVersion(rh)
+    end
+    return r, status, rh, body
+end
+
 -- Create a whole range of items.
 -- Returns an array with a status code per item
 function API.createItems(items)
@@ -2906,9 +3001,6 @@ function API.createItems(items)
     local total_requests = math.ceil(total_items / API_MAX_ITEMS_PER_REQUEST)
 
     local created_items = {}
-    for i = 1, total_items do
-        table.insert(created_items, nil)
-    end
 
     local e = API.verifyZoteroAccess()
     if e ~= nil then
@@ -2922,57 +3014,41 @@ function API.createItems(items)
         local request_items = {}
         local start_item = (request_no - 1) * API_MAX_ITEMS_PER_REQUEST
         local end_item = math.min(start_item + API_MAX_ITEMS_PER_REQUEST, total_items)
-        for i = start_item, end_item do
+        for i = start_item + 1, end_item do
             table.insert(request_items, items[i])
         end
 
         local request_json = JSON.encode(request_items)
-        headers["If-Unmodified-Since-Version"] = API.getUserLibraryVersion()
-        local response = {}
-        logger.dbg(("Zotero: POST request to %s, body:\n%s"):format(create_url, request_json))
-        local r, c, response_headers = https.request({
-            method = "POST",
-            url = create_url,
-            headers = headers,
-            sink = ltn12.sink.table(response),
-            source = ltn12.source.string(request_json),
-        })
+        local r, c, response_headers, content = postZoteroItems(create_url, request_json, false, request_items)
         e = API.verifyResponse(r, c)
         if e ~= nil then
+            API.lastAnnotationSyncError = "Create: HTTP " .. tostring(c)
+            logger.err("Zotero: annotation creation failed: " .. tostring(e))
             return created_items, e
         end
 
-        local content = table.concat(response, "")
         local ok, result = pcall(JSON.decode, content)
-        if not ok then
+        if not ok or type(result) ~= "table" then
+            API.lastAnnotationSyncError = "Create: invalid Zotero response"
             return created_items, "Error: failed to parse JSON in response to annotation creation request"
         end
 
-        -- Maybe don't update library version in here, becase we can't be sure that we have synced all items yet
-        -- Should run a library update after we have finished creating new items...
-
-        --local new_library_version = response_headers["last-modified-version"]
-        ----        print("New lib version: ", new_library_version)
-        --if new_library_version ~= nil then
-        --API.setUserLibraryVersion(new_library_version)
-        --else
-        --logger.err("Z: could not update library version from create request, got " .. tostring(new_library_version))
-        --end
-        --print(JSON.encode(result))
-        for k, v in pairs(result["successful"]) do
+        for k, v in pairs(result["successful"] or {}) do
             local index = start_item + tonumber(k) + 1
             created_items[index] = v
         end
 
-        for k, v in pairs(result["unchanged"]) do
+        for k, v in pairs(result["unchanged"] or {}) do
             local index = start_item + tonumber(k) + 1
             local zotero_key = v
             created_items[index] = {
                 ["key"] = zotero_key,
             }
         end
-        for k, v in pairs(result["failed"]) do
+        for k, v in pairs(result["failed"] or {}) do
             table.insert(fails, v)
+            API.lastAnnotationSyncError = "Create: Zotero item " .. tostring(v.code or "error")
+            logger.err("Zotero: failed to create annotation index " .. tostring(k) .. ": " .. JSON.encode(v))
         end
     end
     if #fails > 0 then
@@ -2992,9 +3068,6 @@ function API.updateItems(items)
     local total_requests = math.ceil(total_items / API_MAX_ITEMS_PER_REQUEST)
 
     local updated_items = {}
-    for i = 1, total_items do
-        table.insert(updated_items, nil)
-    end
 
     local e = API.verifyZoteroAccess()
     if e ~= nil then
@@ -3013,24 +3086,19 @@ function API.updateItems(items)
         end
 
         local request_json = JSON.encode(request_items)
-        headers["If-Unmodified-Since-Version"] = API.getUserLibraryVersion()
-        local response = {}
-        logger.dbg(("Zotero: POST update to %s, body:\n%s"):format(update_url, request_json))
-        local r, c, response_headers = https.request({
-            method = "POST",
-            url = update_url,
-            headers = headers,
-            sink = ltn12.sink.table(response),
-            source = ltn12.source.string(request_json),
-        })
+        local r, c, response_headers, content = postZoteroItems(update_url, request_json, true, request_items)
         e = API.verifyResponse(r, c)
         if e ~= nil then
+            API.lastAnnotationSyncError = (tonumber(c) == 409)
+                and "Update: server version conflict (local annotation preserved)"
+                or "Update: HTTP " .. tostring(c)
+            logger.err("Zotero: annotation update failed: " .. tostring(e))
             return updated_items, e
         end
 
-        local content = table.concat(response, "")
         local ok, result = pcall(JSON.decode, content)
-        if not ok then
+        if not ok or type(result) ~= "table" then
+            API.lastAnnotationSyncError = "Update: invalid Zotero response"
             return updated_items, "Error: failed to parse JSON in response to annotation update request"
         end
 
@@ -3050,10 +3118,8 @@ function API.updateItems(items)
         end
         for k, v in pairs(result["failed"] or {}) do
             table.insert(fails, v)
-        end
-        local new_library_version = response_headers and response_headers["last-modified-version"]
-        if new_library_version ~= nil then
-            API.setUserLibraryVersion(new_library_version)
+            API.lastAnnotationSyncError = "Update: Zotero item " .. tostring(v.code or "error")
+            logger.err("Zotero: failed to update annotation index " .. tostring(k) .. ": " .. JSON.encode(v))
         end
     end
     if #fails > 0 then
