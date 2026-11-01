@@ -147,4 +147,12 @@ network_ok=false
 local failed, reason=API.pullAnnotationsForAttachment("PDFKEY00","/tmp/test.pdf")
 assert(failed==false and reason:find("simulated network failure"))
 assert(#local_sidecar.annotations==2,"Network failure must preserve annotations")
-print("PASS: Zotero->Kindle underlines, idempotent pull, and safe network failure")
+-- Even if /children still returns a deleted annotation (eventual consistency),
+-- the confirmed local tombstone must not be pulled back onto the Kindle.
+network_ok=true
+local_sidecar.annotations={}
+local safe_pull, changed, seen = API.pullAnnotationsForAttachment(
+    "PDFKEY00", "/tmp/test.pdf", {ABCDEFGH=true})
+assert(safe_pull and #local_sidecar.annotations==0,
+    "Recently deleted Kindle annotation must not be resurrected from cached server listing")
+print("PASS: Zotero->Kindle underlines, idempotent pull, offline fail closed and no resurrection")
